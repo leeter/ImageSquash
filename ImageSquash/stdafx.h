@@ -12,8 +12,7 @@
 #define NOTAPE
 #define NOSOUND
 #define NORPC
-#define NOGDI
-#define NOCOLOR
+//#define NOGDI
 #define NODRAWTEXT
 #define NOICONS
 #define NOWINMESSAGES
@@ -28,7 +27,10 @@
 #include "targetver.h"
 #include <Windows.h>
 #include <tchar.h>
+#include <Icm.h>
 #include <wincodec.h>
+
+#include <Shlwapi.h>
 #include <math.h>
 #include <strsafe.h>
 #include "banned.h"
