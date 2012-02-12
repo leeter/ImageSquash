@@ -7,7 +7,8 @@
 static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, double dpi);
 static WICPixelFormatGUID _stdcall GetOutputPixelFormat(UINT colorCount, BOOL hasAlpha, BOOL isBlackAndWhite, BOOL isGreyScale, BOOL & hasPalette);
 static STDMETHODIMP HasAlpha(IWICBitmapSource * source, IWICImagingFactory * factory, BOOL & hasAlpha);
-
+static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICColorContext *** toCreate, UINT count);
+static STDMETHODIMP DecodeImageToRGB(IWICImagingFactory * factory, IWICBitmapSource ** out, IWICBitmapSource * in);
 /// <summary>program entry point</summary>
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -38,7 +39,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		return GetLastError();
 	}
 
-	if(argc > 2)
+	if(argc < 2)
 	{
 		read = LoadString(module, Error, &buffer[0], 256);
 		WriteConsole(consoleOut, &buffer[0], read, &written, NULL);
@@ -81,10 +82,8 @@ int _tmain(int argc, _TCHAR* argv[])
 		hr = DownSampleAndConvertImage(argv[i], argv[argc - 1], dpi);
 	}
 
-	WCHAR outBuffer[2];
-	ReadConsole(consoleIn, (LPVOID) &outBuffer[0], 1, &written, NULL );
 	CoUninitialize();
-	return 0;
+	return hr;
 }
 
 /// <summary>Down samples and converts an image to the pixel format with the least possible
@@ -103,6 +102,10 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	IWICFormatConverter *pConverter = NULL;
 	IWICBitmapScaler * pScaler = NULL;
 	IWICPalette * pPalette = NULL;
+	IWICColorContext ** inputContexts = NULL;
+	IWICColorTransform * colorTransform = NULL;
+	IWICColorContext * outputContext = NULL;
+	IWICColorContext ** outputContexts = NULL;
 
 	//stuff that doesn't
 	IWICBitmapSource * toOutput = NULL;
@@ -149,7 +152,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr))
 	{
-		hr = pFactory->CreateDecoderFromStream(pStream, NULL, WICDecodeMetadataCacheOnDemand, &pDecoder);
+		hr = pFactory->CreateDecoderFromStream(pStream, NULL, WICDecodeMetadataCacheOnLoad, &pDecoder);
 	}
 
 	if (SUCCEEDED(hr))
@@ -165,6 +168,23 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	if (SUCCEEDED(hr))
 	{
 		hr = pIDecoderFrame->GetSize(&sizeX, &sizeY);
+	}
+
+	UINT actualContexts = 0;
+	if (SUCCEEDED(hr))
+	{		
+		hr = pIDecoderFrame->GetColorContexts(0, NULL, &actualContexts);
+	}
+
+	if(SUCCEEDED(hr) && actualContexts > 0)
+	{
+		hr = CreateColorContextArray(pFactory, &inputContexts, actualContexts);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		UINT finalCount = 0;
+		hr= pIDecoderFrame->GetColorContexts(actualContexts, inputContexts, &finalCount);
 	}
 
 	if (SUCCEEDED(hr))
@@ -244,6 +264,30 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 		toOutput = pScaler;
 	}
 
+	if (SUCCEEDED(hr))
+	{
+		pFactory->CreateColorContext(&outputContext);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = outputContext->InitializeFromExifColorSpace(2);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		pFactory->CreateColorTransformer(&colorTransform);
+	}
+
+	if (SUCCEEDED(hr) && inputContexts != NULL)
+	{
+		hr = colorTransform->Initialize(pScaler, inputContexts[1], outputContext, GUID_WICPixelFormat32bppBGRA);
+	}
+
+	if (SUCCEEDED(hr) && inputContexts != NULL)
+	{
+		toOutput = colorTransform;
+	}
 	// if we need to convert the pixel format... we should do so
 	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
 	{		
@@ -253,7 +297,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	if (SUCCEEDED(hr) && pConverter)
 	{
 		pConverter->Initialize(
-			toOutput,
+			colorTransform,
 			outputFormat,
 			WICBitmapDitherTypeNone,
 			pPalette,
@@ -281,17 +325,6 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 		hr = pEncoder->CreateNewFrame(&pOutputFrame, &pPropBag);
 	}
 
-	/*if (SUCCEEDED(hr))
-	{
-	PROPBAG2 objectProperties = { 0 };
-	objectProperties.pstrName = L"FilterOption";
-	VARIANT value;
-	VariantInit(&value);
-	value.vt = VT_UI1;
-	value.uintVal = WICPngFilterAdaptive;		
-	hr = pPropBag->Write(1, &objectProperties, &value);
-	}*/
-
 	if (SUCCEEDED(hr))
 	{
 		hr = pOutputFrame->Initialize(pPropBag);
@@ -299,10 +332,28 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr))
 	{
-		hr = pOutputFrame->SetResolution(dpi, dpi);
+		hr = CreateColorContextArray(pFactory, &outputContexts, 1);
 	}
 
+	/*if (SUCCEEDED(hr))
+	{
+		hr = outputContexts[0]->InitializeFromExifColorSpace(2);
+	}*/
+	if(SUCCEEDED(hr))
+	{
+		WCHAR profilePath[MAX_PATH];
+		DWORD bufferSize = MAX_PATH;
+		WCHAR finalPath[MAX_PATH];
+		GetColorDirectory(NULL, profilePath, &bufferSize);
+		PathCombine(finalPath, profilePath, L"sRGB Color Space Profile.icm");
+		hr = outputContexts[0]->InitializeFromFilename(finalPath);
+	}
 
+	if (SUCCEEDED(hr))
+	{
+		hr = pOutputFrame->SetResolution(dpi, dpi);
+	}
+	
 	if (SUCCEEDED(hr))
 	{
 		hr = pOutputFrame->SetSize(newSizeX, newSizeY);
@@ -320,8 +371,13 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr))
 	{
-		hr = pOutputFrame->WriteSource(toOutput, NULL);
+		hr = pOutputFrame->SetColorContexts(1, outputContexts);
 	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = pOutputFrame->WriteSource(pConverter, NULL);
+	}	
 
 	if (SUCCEEDED(hr))
 	{
@@ -344,6 +400,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	SafeRelease(&pConverter);
 	SafeRelease(&pScaler);
 	SafeRelease(&pPalette);
+	SafeRelease(&outputContext);
 
 	return hr;
 }
@@ -516,5 +573,28 @@ static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory *
 		}
 	}
 
+	return hr;
+}
+
+static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICColorContext *** toCreate, UINT count)
+{
+	HRESULT hr = S_OK;
+	*toCreate = new IWICColorContext*[count];
+	if (*toCreate == NULL)
+	{
+		hr = E_OUTOFMEMORY;
+	}
+
+
+	if (SUCCEEDED(hr))
+	{
+		for(UINT i = 0; i < count; ++i)
+		{
+			if (SUCCEEDED(hr))
+			{
+				hr = factory->CreateColorContext(&(*toCreate)[i]);
+			}
+		}
+	}
 	return hr;
 }
