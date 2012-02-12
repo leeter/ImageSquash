@@ -8,7 +8,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 static WICPixelFormatGUID _stdcall GetOutputPixelFormat(UINT colorCount, BOOL hasAlpha, BOOL isBlackAndWhite, BOOL isGreyScale, BOOL & hasPalette);
 static STDMETHODIMP HasAlpha(IWICBitmapSource * source, IWICImagingFactory * factory, BOOL & hasAlpha);
 static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICColorContext *** toCreate, UINT count);
-static STDMETHODIMP DecodeImageToRGB(IWICImagingFactory * factory, IWICBitmapSource ** out, IWICBitmapSource * in);
+
 /// <summary>program entry point</summary>
 int _tmain(int argc, _TCHAR* argv[])
 {
@@ -104,7 +104,6 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	IWICPalette * pPalette = NULL;
 	IWICColorContext ** inputContexts = NULL;
 	IWICColorTransform * colorTransform = NULL;
-	IWICColorContext * outputContext = NULL;
 	IWICColorContext ** outputContexts = NULL;
 
 	//stuff that doesn't
@@ -266,28 +265,33 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr))
 	{
-		pFactory->CreateColorContext(&outputContext);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = outputContext->InitializeFromExifColorSpace(2);
-	}
-
-	if (SUCCEEDED(hr))
-	{
 		pFactory->CreateColorTransformer(&colorTransform);
 	}
 
-	if (SUCCEEDED(hr) && inputContexts != NULL)
+	if (SUCCEEDED(hr))
 	{
-		hr = colorTransform->Initialize(pScaler, inputContexts[1], outputContext, GUID_WICPixelFormat32bppBGRA);
+		hr = CreateColorContextArray(pFactory, &outputContexts, 1);
+	}
+
+	if(SUCCEEDED(hr))
+	{
+		WCHAR profilePath[MAX_PATH];
+		DWORD bufferSize = MAX_PATH;
+		WCHAR finalPath[MAX_PATH];
+		GetColorDirectory(NULL, profilePath, &bufferSize);
+		PathCombine(finalPath, profilePath, L"sRGB Color Space Profile.icm");
+		hr = outputContexts[0]->InitializeFromFilename(finalPath);
 	}
 
 	if (SUCCEEDED(hr) && inputContexts != NULL)
 	{
-		toOutput = colorTransform;
+		hr = colorTransform->Initialize(pScaler, inputContexts[1], outputContexts[0], GUID_WICPixelFormat32bppBGRA);
 	}
+
+	/*if (SUCCEEDED(hr) && inputContexts != NULL)
+	{
+		toOutput = colorTransform;
+	}*/
 	// if we need to convert the pixel format... we should do so
 	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
 	{		
@@ -306,10 +310,10 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 			);
 	}
 
-	if (SUCCEEDED(hr) && pConverter)
+	/*if (SUCCEEDED(hr) && pConverter)
 	{
 		toOutput = pConverter;
-	}
+	}*/
 
 	if (SUCCEEDED(hr))
 	{
@@ -328,25 +332,6 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	if (SUCCEEDED(hr))
 	{
 		hr = pOutputFrame->Initialize(pPropBag);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = CreateColorContextArray(pFactory, &outputContexts, 1);
-	}
-
-	/*if (SUCCEEDED(hr))
-	{
-		hr = outputContexts[0]->InitializeFromExifColorSpace(2);
-	}*/
-	if(SUCCEEDED(hr))
-	{
-		WCHAR profilePath[MAX_PATH];
-		DWORD bufferSize = MAX_PATH;
-		WCHAR finalPath[MAX_PATH];
-		GetColorDirectory(NULL, profilePath, &bufferSize);
-		PathCombine(finalPath, profilePath, L"sRGB Color Space Profile.icm");
-		hr = outputContexts[0]->InitializeFromFilename(finalPath);
 	}
 
 	if (SUCCEEDED(hr))
@@ -400,7 +385,6 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	SafeRelease(&pConverter);
 	SafeRelease(&pScaler);
 	SafeRelease(&pPalette);
-	SafeRelease(&outputContext);
 
 	return hr;
 }
