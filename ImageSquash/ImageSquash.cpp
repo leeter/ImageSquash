@@ -285,13 +285,23 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr) && inputContexts != NULL)
 	{
-		hr = colorTransform->Initialize(pScaler, inputContexts[1], outputContexts[0], GUID_WICPixelFormat32bppBGRA);
+		for(int i = (actualContexts - 1); i; --i)
+		{
+			WICColorContextType type = WICColorContextUninitialized;
+			inputContexts[i]->GetType(&type);
+
+			hr = colorTransform->Initialize(toOutput, inputContexts[i], outputContexts[0], GUID_WICPixelFormat32bppBGRA);
+			if(SUCCEEDED(hr))
+			{
+				break;
+			}
+		}
 	}
 
-	/*if (SUCCEEDED(hr) && inputContexts != NULL)
+	if (SUCCEEDED(hr) && inputContexts != NULL)
 	{
 		toOutput = colorTransform;
-	}*/
+	}
 	// if we need to convert the pixel format... we should do so
 	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
 	{		
@@ -301,7 +311,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	if (SUCCEEDED(hr) && pConverter)
 	{
 		pConverter->Initialize(
-			colorTransform,
+			toOutput,
 			outputFormat,
 			WICBitmapDitherTypeNone,
 			pPalette,
@@ -310,10 +320,10 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 			);
 	}
 
-	/*if (SUCCEEDED(hr) && pConverter)
+	if (SUCCEEDED(hr) && pConverter)
 	{
 		toOutput = pConverter;
-	}*/
+	}
 
 	if (SUCCEEDED(hr))
 	{
@@ -361,7 +371,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr))
 	{
-		hr = pOutputFrame->WriteSource(pConverter, NULL);
+		hr = pOutputFrame->WriteSource(toOutput, NULL);
 	}	
 
 	if (SUCCEEDED(hr))
