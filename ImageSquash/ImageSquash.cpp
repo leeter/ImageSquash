@@ -172,6 +172,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	UINT actualContexts = 0;
 	if (SUCCEEDED(hr))
 	{		
+		toOutput = pIDecoderFrame;
 		hr = pIDecoderFrame->GetColorContexts(0, NULL, &actualContexts);
 	}
 
@@ -180,10 +181,76 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 		hr = CreateColorContextArray(pFactory, &inputContexts, actualContexts);
 	}
 
-	if (SUCCEEDED(hr))
+	if (SUCCEEDED(hr) && actualContexts > 0)
 	{
 		UINT finalCount = 0;
 		hr= pIDecoderFrame->GetColorContexts(actualContexts, inputContexts, &finalCount);
+	}
+
+	if (SUCCEEDED(hr) && actualContexts > 0)
+	{
+		pFactory->CreateColorTransformer(&colorTransform);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = CreateColorContextArray(pFactory, &outputContexts, 1);
+	}
+
+	if(SUCCEEDED(hr))
+	{
+		WCHAR profilePath[MAX_PATH];
+		DWORD bufferSize = MAX_PATH;
+		WCHAR finalPath[MAX_PATH];
+		BOOL result = GetColorDirectory(NULL, profilePath, &bufferSize);
+		if (!result)
+		{
+			hr = GetLastError();
+		}
+		PathCombine(finalPath, profilePath, L"sRGB Color Space Profile.icm");
+		hr = outputContexts[0]->InitializeFromFilename(finalPath);
+	}
+
+	if (SUCCEEDED(hr) && inputContexts != NULL)
+	{
+		for(int i = 0 ;i < actualContexts; ++i)
+		{
+			WICColorContextType type = WICColorContextUninitialized;
+			inputContexts[i]->GetType(&type);
+
+			hr = colorTransform->Initialize(toOutput, inputContexts[i], outputContexts[0], GUID_WICPixelFormat32bppBGRA);
+			if(SUCCEEDED(hr))
+			{
+				break;
+			}
+		}
+	}
+	if (SUCCEEDED(hr))
+	{
+		hr = pIDecoderFrame->GetResolution(&originalDpiX, &originalDpiY);
+	}
+
+	if (SUCCEEDED(hr) && (originalDpiX > dpi || originalDpiY > dpi))
+	{
+		hr = pFactory->CreateBitmapScaler(&pScaler);
+	}	
+
+	UINT newSizeX = sizeX, newSizeY = sizeY;
+	if (SUCCEEDED(hr) && pScaler)
+	{
+		newSizeX = (UINT)ceil(((double)sizeX) * (dpi / originalDpiX));
+		newSizeY = (UINT)ceil(((double)sizeY) * (dpi / originalDpiY));
+		hr = pScaler->Initialize(pIDecoderFrame, newSizeX, newSizeY, WICBitmapInterpolationModeFant);
+	}
+
+	// Change output to scaled
+	if (SUCCEEDED(hr) && pScaler)
+	{
+		toOutput = pScaler;
+	}
+	if (SUCCEEDED(hr) && inputContexts != NULL)
+	{
+		toOutput = colorTransform;
 	}
 
 	if (SUCCEEDED(hr))
@@ -194,12 +261,12 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 			if (SUCCEEDED(hr))
 			{
-				hr = HasAlpha(pIDecoderFrame, pFactory, hasAlpha);
+				hr = HasAlpha(toOutput, pFactory, hasAlpha);
 			}
 
 			if (SUCCEEDED(hr))
 			{
-				hr = pPalette->InitializeFromBitmap(pIDecoderFrame, 256U, hasAlpha);
+				hr = pPalette->InitializeFromBitmap(toOutput, 256U, hasAlpha);
 			}			
 
 			if (SUCCEEDED(hr))
@@ -237,70 +304,6 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 		{
 			outputFormat = selectedOutputFormat = inputFormat;
 		}
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pIDecoderFrame->GetResolution(&originalDpiX, &originalDpiY);
-	}
-
-	if (SUCCEEDED(hr) && (originalDpiX > dpi || originalDpiY > dpi))
-	{
-		hr = pFactory->CreateBitmapScaler(&pScaler);
-	}	
-
-	UINT newSizeX = sizeX, newSizeY = sizeY;
-	if (SUCCEEDED(hr) && pScaler)
-	{
-		newSizeX = (UINT)ceil(((double)sizeX) * (dpi / originalDpiX));
-		newSizeY = (UINT)ceil(((double)sizeY) * (dpi / originalDpiY));
-		hr = pScaler->Initialize(pIDecoderFrame, newSizeX, newSizeY, WICBitmapInterpolationModeFant);
-	}
-
-	// Change output to scaled
-	if (SUCCEEDED(hr) && pScaler)
-	{
-		toOutput = pScaler;
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		pFactory->CreateColorTransformer(&colorTransform);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = CreateColorContextArray(pFactory, &outputContexts, 1);
-	}
-
-	if(SUCCEEDED(hr))
-	{
-		WCHAR profilePath[MAX_PATH];
-		DWORD bufferSize = MAX_PATH;
-		WCHAR finalPath[MAX_PATH];
-		GetColorDirectory(NULL, profilePath, &bufferSize);
-		PathCombine(finalPath, profilePath, L"sRGB Color Space Profile.icm");
-		hr = outputContexts[0]->InitializeFromFilename(finalPath);
-	}
-
-	if (SUCCEEDED(hr) && inputContexts != NULL)
-	{
-		for(int i = (actualContexts - 1); i; --i)
-		{
-			WICColorContextType type = WICColorContextUninitialized;
-			inputContexts[i]->GetType(&type);
-
-			hr = colorTransform->Initialize(toOutput, inputContexts[i], outputContexts[0], GUID_WICPixelFormat32bppBGRA);
-			if(SUCCEEDED(hr))
-			{
-				break;
-			}
-		}
-	}
-
-	if (SUCCEEDED(hr) && inputContexts != NULL)
-	{
-		toOutput = colorTransform;
 	}
 	// if we need to convert the pixel format... we should do so
 	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
@@ -351,7 +354,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	
 	if (SUCCEEDED(hr))
 	{
-		hr = pOutputFrame->SetSize(newSizeX, newSizeY);
+		hr = pOutputFrame->SetSize(sizeX, sizeY);
 	} 
 
 	if (SUCCEEDED(hr))
@@ -578,7 +581,6 @@ static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICCo
 	{
 		hr = E_OUTOFMEMORY;
 	}
-
 
 	if (SUCCEEDED(hr))
 	{
