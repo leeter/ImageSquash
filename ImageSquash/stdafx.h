@@ -24,6 +24,13 @@
 #define MMNOSOUND
 #define MMNODRV
 #define STRICT
+#define STRSAFE_USE_SECURE_CRT 1
+#define NO_SHLWAPI_STRFCNS 1
+#define NO_SHLWAPI_REG 1
+#define NO_SHLWAPI_STREAM 1
+#define NO_SHLWAPI_HTTP 1
+#define NO_SHLWAPI_ISOS 1
+#define NO_SHLWAPI_GDI 1
 #include "targetver.h"
 #include <Windows.h>
 #include <tchar.h>

@@ -105,14 +105,15 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	IWICColorContext ** inputContexts = NULL;
 	IWICColorTransform * colorTransform = NULL;
 	IWICColorContext ** outputContexts = NULL;
+	WCHAR * profilePath = NULL;
 
 	//stuff that doesn't
 	IWICBitmapSource * toOutput = NULL;
 	WICPixelFormatGUID inputFormat = { 0 };
 	WICPixelFormatGUID outputFormat = GUID_WICPixelFormat32bppBGRA, selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
 	double originalDpiX = 0.0, originalDpiY = 0.0;
-	UINT sizeX = 0, sizeY = 0, colorCount = 0;
-	BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE;
+	UINT sizeX = 0, sizeY = 0, colorCount = 0, finalCount = 0;;
+	BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE, isCMYK = FALSE;
 
 	HRESULT hr = CoCreateInstance(
 		CLSID_WICImagingFactory,
@@ -166,9 +167,17 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr))
 	{
-		hr = pIDecoderFrame->GetSize(&sizeX, &sizeY);
+		isCMYK = InlineIsEqualGUID(GUID_WICPixelFormat32bppCMYK, inputFormat) || 
+				 InlineIsEqualGUID(GUID_WICPixelFormat40bppCMYKAlpha, inputFormat) ||
+				 InlineIsEqualGUID(GUID_WICPixelFormat64bppCMYK, inputFormat) ||
+				 InlineIsEqualGUID(GUID_WICPixelFormat80bppCMYKAlpha, inputFormat);
 	}
 
+	if (SUCCEEDED(hr))
+	{
+		hr = pIDecoderFrame->GetSize(&sizeX, &sizeY);
+	}
+	// ------------------------- Color -------------------------------------------
 	UINT actualContexts = 0;
 	if (SUCCEEDED(hr))
 	{		
@@ -176,18 +185,39 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 		hr = pIDecoderFrame->GetColorContexts(0, NULL, &actualContexts);
 	}
 
-	if(SUCCEEDED(hr) && actualContexts > 0)
+	if(SUCCEEDED(hr) && (actualContexts || isCMYK))
 	{
-		hr = CreateColorContextArray(pFactory, &inputContexts, actualContexts);
-	}
+		// if we don't have any contexts but we're CMYK we need to have a profile anyway
+		UINT contextsToCreate = !actualContexts && isCMYK ? 1 : actualContexts;
+		hr = CreateColorContextArray(pFactory, &inputContexts, contextsToCreate);
+	}	
 
 	if (SUCCEEDED(hr) && actualContexts > 0)
-	{
-		UINT finalCount = 0;
+	{		
 		hr= pIDecoderFrame->GetColorContexts(actualContexts, inputContexts, &finalCount);
 	}
+	
+	if (SUCCEEDED(hr))
+	{
+		DWORD bufferSize = 0;
+		BOOL result = GetColorDirectory(NULL, NULL, &bufferSize);
+		profilePath = new WCHAR[bufferSize];		
+		result = GetColorDirectory(NULL, profilePath, &bufferSize);
+		if (!result)
+		{
+			hr = GetLastError();
+			return hr;
+		}
+	}
 
-	if (SUCCEEDED(hr) && actualContexts > 0)
+	if (SUCCEEDED(hr) && !actualContexts && isCMYK)
+	{		
+		WCHAR finalPath[MAX_PATH];
+		PathCombine(finalPath, profilePath, L"RSWOP.icm");
+		hr = inputContexts[0]->InitializeFromFilename(finalPath);
+	}
+
+	if (SUCCEEDED(hr) && finalCount)
 	{
 		pFactory->CreateColorTransformer(&colorTransform);
 	}
@@ -199,14 +229,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if(SUCCEEDED(hr))
 	{
-		WCHAR profilePath[MAX_PATH];
-		DWORD bufferSize = MAX_PATH;
 		WCHAR finalPath[MAX_PATH];
-		BOOL result = GetColorDirectory(NULL, profilePath, &bufferSize);
-		if (!result)
-		{
-			hr = GetLastError();
-		}
 		PathCombine(finalPath, profilePath, L"sRGB Color Space Profile.icm");
 		hr = outputContexts[0]->InitializeFromFilename(finalPath);
 	}
@@ -225,9 +248,15 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 			}
 		}
 	}
+
+	if (SUCCEEDED(hr) && inputContexts != NULL)
+	{
+		toOutput = colorTransform;
+	}
+	//--------------------- SCALING -----------------------------------------------
 	if (SUCCEEDED(hr))
 	{
-		hr = pIDecoderFrame->GetResolution(&originalDpiX, &originalDpiY);
+		hr = toOutput->GetResolution(&originalDpiX, &originalDpiY);
 	}
 
 	if (SUCCEEDED(hr) && (originalDpiX > dpi || originalDpiY > dpi))
@@ -238,9 +267,9 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	UINT newSizeX = sizeX, newSizeY = sizeY;
 	if (SUCCEEDED(hr) && pScaler)
 	{
-		newSizeX = (UINT)ceil(((double)sizeX) * (dpi / originalDpiX));
-		newSizeY = (UINT)ceil(((double)sizeY) * (dpi / originalDpiY));
-		hr = pScaler->Initialize(pIDecoderFrame, newSizeX, newSizeY, WICBitmapInterpolationModeFant);
+		newSizeX = (UINT)ceil(((double)sizeX * dpi) / originalDpiX);
+		newSizeY = (UINT)ceil(((double)sizeY * dpi) / originalDpiY);
+		hr = pScaler->Initialize(toOutput, newSizeX, newSizeY, WICBitmapInterpolationModeFant);
 	}
 
 	// Change output to scaled
@@ -248,10 +277,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	{
 		toOutput = pScaler;
 	}
-	if (SUCCEEDED(hr) && inputContexts != NULL)
-	{
-		toOutput = colorTransform;
-	}
+	
 
 	if (SUCCEEDED(hr))
 	{
@@ -342,10 +368,22 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 		hr = pEncoder->CreateNewFrame(&pOutputFrame, &pPropBag);
 	}
 
+	// this doesn't actually do anything at the moment, but we should keep it around as a sample of
+	// how to do it in the future
 	if (SUCCEEDED(hr))
-	{
-		hr = pOutputFrame->Initialize(pPropBag);
-	}
+	{        
+		PROPBAG2 option = { 0 };
+		option.pstrName = L"InterlaceOption";
+		VARIANT varValue;    
+		VariantInit(&varValue);
+		varValue.vt = VT_BOOL;
+		varValue.boolVal = 0;      
+		hr = pPropBag->Write(1, &option, &varValue); 
+		if (SUCCEEDED(hr))
+		{
+			hr = pOutputFrame->Initialize(pPropBag);
+		}
+	}	
 
 	if (SUCCEEDED(hr))
 	{
@@ -354,8 +392,8 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	
 	if (SUCCEEDED(hr))
 	{
-		hr = pOutputFrame->SetSize(sizeX, sizeY);
-	} 
+		hr = pOutputFrame->SetSize(newSizeX, newSizeY);
+	}
 
 	if (SUCCEEDED(hr))
 	{
@@ -366,11 +404,11 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	{
 		hr = IsEqualGUID(outputFormat, selectedOutputFormat) ? S_OK : E_FAIL;
 	}
-
-	if (SUCCEEDED(hr))
+	// disabled as this was adding 4k to the image
+	/*if (SUCCEEDED(hr))
 	{
 		hr = pOutputFrame->SetColorContexts(1, outputContexts);
-	}
+	}*/
 
 	if (SUCCEEDED(hr))
 	{
