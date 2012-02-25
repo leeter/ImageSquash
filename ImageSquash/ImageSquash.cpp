@@ -17,7 +17,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	size_t actuallength = 0;
 	HANDLE consoleOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	HANDLE consoleIn = GetStdHandle(STD_INPUT_HANDLE);
-	
+
 	if(consoleOut == NULL)
 	{
 		return -1;
@@ -28,7 +28,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	{
 		return GetLastError();
 	}
-	
+
 
 	DWORD written = 0;
 	WCHAR buffer[256];
@@ -44,10 +44,10 @@ int _tmain(int argc, _TCHAR* argv[])
 		read = LoadString(module, Error, &buffer[0], 256);
 		WriteConsole(consoleOut, &buffer[0], read, &written, NULL);
 	}
-	
+
 	for(int i = 1; i < argc; ++i)
 	{
-		
+
 		hr = StringCchLength(argv[i], 256, &actuallength);
 		if(SUCCEEDED(hr))
 		{
@@ -74,7 +74,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
 	if(!SUCCEEDED(hr))
 	{
-		return -2;
+		return hr;
 	}
 
 	for (int i = 1; i < (argc - 1); ++i)
@@ -168,9 +168,9 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	if (SUCCEEDED(hr))
 	{
 		isCMYK = InlineIsEqualGUID(GUID_WICPixelFormat32bppCMYK, inputFormat) || 
-				 InlineIsEqualGUID(GUID_WICPixelFormat40bppCMYKAlpha, inputFormat) ||
-				 InlineIsEqualGUID(GUID_WICPixelFormat64bppCMYK, inputFormat) ||
-				 InlineIsEqualGUID(GUID_WICPixelFormat80bppCMYKAlpha, inputFormat);
+			InlineIsEqualGUID(GUID_WICPixelFormat40bppCMYKAlpha, inputFormat) ||
+			InlineIsEqualGUID(GUID_WICPixelFormat64bppCMYK, inputFormat) ||
+			InlineIsEqualGUID(GUID_WICPixelFormat80bppCMYKAlpha, inputFormat);
 	}
 
 	if (SUCCEEDED(hr))
@@ -196,18 +196,19 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	{		
 		hr= pIDecoderFrame->GetColorContexts(actualContexts, inputContexts, &finalCount);
 	}
-	
+
 	if (SUCCEEDED(hr))
 	{
 		DWORD bufferSize = 0;
 		BOOL result = GetColorDirectory(NULL, NULL, &bufferSize);
+		// unfortunately unless we want to handle the pathing semantics we're
+		// with 8.3 paths
+		if (!result || bufferSize == NULL || bufferSize > MAX_PATH)
+		{
+			hr = E_FAIL;
+		}
 		profilePath = new WCHAR[bufferSize];		
 		result = GetColorDirectory(NULL, profilePath, &bufferSize);
-		if (!result)
-		{
-			hr = GetLastError();
-			return hr;
-		}
 	}
 
 	if (SUCCEEDED(hr) && !actualContexts && isCMYK)
@@ -219,7 +220,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 
 	if (SUCCEEDED(hr) && finalCount)
 	{
-		pFactory->CreateColorTransformer(&colorTransform);
+		hr = pFactory->CreateColorTransformer(&colorTransform);
 	}
 
 	if (SUCCEEDED(hr))
@@ -277,7 +278,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	{
 		toOutput = pScaler;
 	}
-	
+
 
 	if (SUCCEEDED(hr))
 	{
@@ -389,7 +390,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	{
 		hr = pOutputFrame->SetResolution(dpi, dpi);
 	}
-	
+
 	if (SUCCEEDED(hr))
 	{
 		hr = pOutputFrame->SetSize(newSizeX, newSizeY);
@@ -407,7 +408,7 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	// disabled as this was adding 4k to the image
 	/*if (SUCCEEDED(hr))
 	{
-		hr = pOutputFrame->SetColorContexts(1, outputContexts);
+	hr = pOutputFrame->SetColorContexts(1, outputContexts);
 	}*/
 
 	if (SUCCEEDED(hr))
@@ -436,6 +437,17 @@ static STDMETHODIMP DownSampleAndConvertImage(LPCTSTR inPath, LPCTSTR outPath, d
 	SafeRelease(&pConverter);
 	SafeRelease(&pScaler);
 	SafeRelease(&pPalette);
+	SafeRelease(&colorTransform);
+	for(int i = 0; i < actualContexts; ++i)
+	{
+		SafeRelease(&inputContexts[i]);
+	}
+
+	delete [] inputContexts;
+
+	// there should never be more than one output context
+	SafeRelease(&outputContexts[0]);
+	delete [] outputContexts;
 
 	return hr;
 }
@@ -525,7 +537,7 @@ static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory *
 	IWICFormatConverter * converter = NULL;
 	IWICBitmap * bitmap = NULL;
 	IWICBitmapLock * lock = NULL;
-	
+
 	// stuff that doesn't
 	WICInProcPointer buffer = NULL;
 	UINT * bitmapPixels = NULL;
