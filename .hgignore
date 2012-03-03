@@ -1,0 +1,16 @@
+syntax: glob
+ImageSquash.sdf
+x64/*
+ipch/*
+ImageSquash/x64/*
+ImageSquash/stdafx.h.orig
+ImageSquash/ImageSquash.vcxproj.user
+ImageSquash/ImageSquash.vcxproj.orig
+ImageSquash/ImageSquash.cpp.orig
+ImageSquash/Debug/*
+ImageSquash.v11.suo
+ImageSquash.opensdf
+Debug/*
+crushed/*
+ImageSquash/ImageSquash.aps
+ImageSquash/testImages/Thumbs.db

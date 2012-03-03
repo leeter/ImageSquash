@@ -12,7 +12,6 @@
 #define NOTAPE
 #define NOSOUND
 #define NORPC
-//#define NOGDI
 #define NODRAWTEXT
 #define NOICONS
 #define NOWINMESSAGES
@@ -20,6 +19,7 @@
 #define NOMETAFILE
 #define NOWINABLE
 #define NOCLIPBOARD
+#define NORASTEROPS
 #define MMNOMMSYSTEM
 #define MMNOSOUND
 #define MMNODRV
