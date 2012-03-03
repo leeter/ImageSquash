@@ -36,7 +36,7 @@
 #include <tchar.h>
 #include <Icm.h>
 #include <wincodec.h>
-
+#include <vector>
 #include <Shlwapi.h>
 #include <math.h>
 #include <strsafe.h>
