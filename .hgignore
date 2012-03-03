@@ -14,3 +14,5 @@ Debug/*
 crushed/*
 ImageSquash/ImageSquash.aps
 ImageSquash/testImages/Thumbs.db
+_ReSharper.ImageSquash/*
+ImageSquash/Release/*

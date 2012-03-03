@@ -781,6 +781,5 @@ static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixel
 		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppBGRAFixedPoint) ||
 		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPBGRA) ||
 		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPRGBA) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPRGBAHalf) ||
 		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppRGBA);
 }
