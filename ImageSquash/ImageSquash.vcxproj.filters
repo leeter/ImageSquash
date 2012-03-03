@@ -16,6 +16,39 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
+    <None Include="testImages\bw.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\BW32bit.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\CMYK Color.tif">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\Gradient.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\Gradient2.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\Gradientout.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\gradout.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\halfblack.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\halfColor.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\hcout.png">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="testImages\Untitled.png">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">

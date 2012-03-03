@@ -221,6 +221,17 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="ReadMe.txt" />
+    <None Include="testImages\bw.png" />
+    <None Include="testImages\BW32bit.png" />
+    <None Include="testImages\CMYK Color.tif" />
+    <None Include="testImages\Gradient.png" />
+    <None Include="testImages\Gradient2.png" />
+    <None Include="testImages\Gradientout.png" />
+    <None Include="testImages\gradout.png" />
+    <None Include="testImages\halfblack.png" />
+    <None Include="testImages\halfColor.png" />
+    <None Include="testImages\hcout.png" />
+    <None Include="testImages\Untitled.png" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="banned.h" />
