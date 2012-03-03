@@ -24,6 +24,7 @@ static void CALLBACK DownSampleThread(
 	__inout      PTP_WORK Work
 	);
 static STDMETHODIMP QueueFileForDownSample(WIN32_FIND_DATA &file, LPCWSTR inPath, LPCWSTR outPath, LPCWSTR profilePath, double dpi, std::vector<PTP_WORK> & worklist);
+static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixelFormat);
 
 /// <summary>program entry point</summary>
 int _tmain(int argc, _TCHAR* argv[])
@@ -37,7 +38,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	HANDLE consoleOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	HANDLE consoleIn = GetStdHandle(STD_INPUT_HANDLE);
 	HANDLE standardError = GetStdHandle(STD_ERROR_HANDLE);
-	
+
 	if(consoleOut == NULL)
 	{
 		return -1;
@@ -50,23 +51,69 @@ int _tmain(int argc, _TCHAR* argv[])
 		return -1;
 	}
 
-
 	DWORD written = 0;
 	WCHAR buffer[256];
-	int read = LoadString(module, Logo, &buffer[0], 256);
-	hr = StringCchLength(buffer, 256, &actuallength);
-	if(!WriteConsole(consoleOut, buffer, actuallength, &written, NULL))
+	int read = LoadString(module, Logo, buffer, 256);
+	if(!WriteConsole(consoleOut, buffer, read, &written, NULL))
 	{
 		WriteOutLastError();
 		return -1;
+	}
+
+	for(int i = argc - 1; i; --i)
+	{
+		hr = StringCchLength(argv[i], 256, &actuallength);
+		if(!SUCCEEDED(hr) || actuallength > MAX_PATH)
+		{
+			return hr;
+		}
+		if(CompareStringOrdinal(argv[i], actuallength, L"-?", 2, TRUE) == CSTR_EQUAL ||
+			CompareStringOrdinal(argv[i], actuallength, L"/?", 2, TRUE) == CSTR_EQUAL)
+		{
+			
+			read = LoadString(module, HelpString, buffer , 256);			
+			WriteConsole(consoleOut, buffer, read, &written, NULL);
+			return 0;
+		}
 	}
 
 	if(argc < 2)
 	{
 		read = LoadString(module, Error, &buffer[0], 256);
 		WriteConsole(consoleOut, &buffer[0], read, &written, NULL);
+		return -1;
 	}
 
+	
+
+	/******************************************************************************
+	* Get the DPI if it's set at the command line
+	*/
+	for(int i = 1; i < argc; ++i)
+	{
+		if(CompareStringOrdinal(argv[i], actuallength, L"-dpi", 4, TRUE) == CSTR_EQUAL)
+		{
+			++i;
+			if (i > argc)
+			{
+				return E_INVALIDARG;		
+			}
+			if (argv[i] != NULL)
+			{
+				wchar_t * stopped = NULL;
+				double result = 0.0;
+				result = wcstod(argv[i], &stopped);
+				if (result != HUGE_VAL || result > 0)
+				{
+					dpi = result;
+				}
+			}		
+		}
+	}
+
+	/**************************************************************************
+	 * Get the color directory once
+	 */
 	if (SUCCEEDED(hr))
 	{
 		DWORD bufferSize = 0;
@@ -79,30 +126,6 @@ int _tmain(int argc, _TCHAR* argv[])
 			hr = E_FAIL;
 		}
 		GetColorDirectory(NULL, profilePath , &bufferSize);
-	}
-	for(int i = 1; i < argc; ++i)
-	{
-		hr = StringCchLength(argv[i], 256, &actuallength);
-		if(SUCCEEDED(hr))
-		{
-			if(CompareStringOrdinal(argv[i], actuallength, L"-b", 2, TRUE) == 0)
-			{
-				++i;
-				if (i < argc)
-				{
-					if (argv[i] != NULL)
-					{
-						wchar_t * stopped = NULL;
-						double result = 0.0;
-						result = wcstod(argv[i + 1], &stopped);
-						if (result != HUGE_VAL || result > 0)
-						{
-							dpi = result;
-						}
-					}					
-				}
-			}
-		}
 	}
 
 	WIN32_FIND_DATA file = {0};
@@ -122,7 +145,6 @@ int _tmain(int argc, _TCHAR* argv[])
 			WCHAR inPathBuffer[MAX_PATH];
 			WCHAR outPathBuffer[MAX_PATH];
 
-			
 			PathCombine(inPathBuffer, inPathBase, file.cFileName);
 			PathCombine(outPathBuffer, outPathBase, file.cFileName);
 			PathRenameExtension(outPathBuffer, L".png");
@@ -137,7 +159,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	{
 		hr = QueueFileForDownSample(file, argv[1], argv[2], profilePath, dpi, worklist);
 	}
-	
+
 	for (size_t waitCount = worklist.size(); waitCount; --waitCount)
 	{
 		size_t index = waitCount - 1;
@@ -193,7 +215,7 @@ static void CALLBACK DownSampleThread(
 		TransformInfo * info = reinterpret_cast<TransformInfo*>(Context);
 		DownSampleAndConvertImage(info);
 	}
-	
+
 	if (SUCCEEDED(hr))
 	{
 		CoUninitialize();
@@ -228,7 +250,7 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 	WICPixelFormatGUID inputFormat = { 0 };
 	WICPixelFormatGUID outputFormat = GUID_WICPixelFormat32bppBGRA, selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
 	double originalDpiX = 0.0, originalDpiY = 0.0;
-	UINT sizeX = 0, sizeY = 0, colorCount = 0, finalCount = 0;;
+	UINT sizeX = 0, sizeY = 0, colorCount = 0, finalCount = 0 ,actualContexts = 0;
 	BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE, isCMYK = FALSE;
 
 	HRESULT hr = CoCreateInstance(
@@ -241,7 +263,7 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 
 	if (SUCCEEDED(hr))
 	{
-			hr = pFactory->CreateStream(&pStream);
+		hr = pFactory->CreateStream(&pStream);
 	}
 
 	if (SUCCEEDED(hr))
@@ -289,7 +311,7 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 		hr = pIDecoderFrame->GetSize(&sizeX, &sizeY);
 	}
 	// ------------------------- Color -------------------------------------------
-	UINT actualContexts = 0;
+
 	if (SUCCEEDED(hr))
 	{		
 		toOutput = pIDecoderFrame;
@@ -308,7 +330,7 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 		hr= pIDecoderFrame->GetColorContexts(actualContexts, inputContexts, &finalCount);
 	}
 
-	
+
 
 	if (SUCCEEDED(hr) && !actualContexts && isCMYK)
 	{		
@@ -564,15 +586,15 @@ static DWORD _stdcall WriteOutLastError()
 {
 	LPWSTR outBuffer = NULL;
 	size_t read = FormatMessage(
-			FORMAT_MESSAGE_FROM_SYSTEM |
-			FORMAT_MESSAGE_ALLOCATE_BUFFER,
-			NULL,
-			GetLastError(),
-			0,
-			outBuffer,
-			BUFSIZ,
-			NULL
-			);
+		FORMAT_MESSAGE_FROM_SYSTEM |
+		FORMAT_MESSAGE_ALLOCATE_BUFFER,
+		NULL,
+		GetLastError(),
+		0,
+		outBuffer,
+		BUFSIZ,
+		NULL
+		);
 	DWORD toReturn = WriteStdError(outBuffer, read);
 	LocalFree(outBuffer);
 	return toReturn;
@@ -651,10 +673,7 @@ static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory *
 	hasAlpha = false;
 	if (SUCCEEDED(hr))
 	{
-		if (IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppBGRA) ||
-			IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppPBGRA) ||
-			IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppRGBA) ||
-			IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppPRGBA))
+		if(IsPixelFormatRGBWithAlpha(inputFormat))
 		{
 			if (IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppBGRA))
 			{
@@ -673,7 +692,6 @@ static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory *
 						0.0,
 						WICBitmapPaletteTypeCustom
 						);
-
 				}
 
 				if (SUCCEEDED(hr))
@@ -705,17 +723,18 @@ static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory *
 
 			if(SUCCEEDED(hr))
 			{
-				//bitmapPixels = (UINT*)&buffer[0];
-				size_t i = bufferSize;
+				// it's little endian, as such alpha will be stored in the
+				// pixel with the highest address if we're in BGRA format
+				size_t i = bufferSize - 1;
 				do
-				{
-					i -= 4;
+				{					
 					if(buffer[i] != 0xFFU)
 					{
 						hasAlpha = TRUE;
 						break;
 					}
-				}while(i);
+					i -= 4;
+				}while(i > 3);
 			}
 
 			SafeRelease(&converter);
@@ -747,4 +766,21 @@ static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICCo
 		}
 	}
 	return hr;
+}
+
+static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixelFormat)
+{
+	return InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppBGRA) ||
+		InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppPBGRA) ||
+		InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppRGBA) ||
+		InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppPRGBA) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat128bppPRGBAFloat) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat128bppRGBAFixedPoint) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat128bppRGBAFloat) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppBGRA) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppBGRAFixedPoint) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPBGRA) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPRGBA) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPRGBAHalf) ||
+		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppRGBA);
 }
