@@ -2,7 +2,9 @@
 //
 
 #include "stdafx.h"
+#include "Output.h"
 #include "resource.h"
+
 #define E_WORKITEMQUEUEFAIL MAKE_HRESULT(SEVERITY_ERROR, 9, 1);
 struct{
 	WCHAR inPath[MAX_PATH];
@@ -147,7 +149,7 @@ int _tmain(int argc, _TCHAR* argv[])
 
 			PathCombine(inPathBuffer, inPathBase, file.cFileName);
 			PathCombine(outPathBuffer, outPathBase, file.cFileName);
-			PathRenameExtension(outPathBuffer, L".png");
+			
 			hr = QueueFileForDownSample(file, inPathBuffer, outPathBuffer, profilePath, dpi, worklist);
 			if(!SUCCEEDED(hr))
 			{
@@ -233,25 +235,20 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 	IWICImagingFactory *pFactory = NULL;
 	IWICBitmapDecoder *pDecoder = NULL; 
 	IWICStream *pStream = NULL;
-	IWICStream *pOutStream = NULL;
 	IPropertyBag2 * pPropBag = NULL;
-	IWICBitmapFrameEncode * pOutputFrame = NULL;
 	IWICBitmapFrameDecode *pIDecoderFrame  = NULL;
-	IWICBitmapEncoder *pEncoder = NULL;
-	IWICFormatConverter *pConverter = NULL;
 	IWICBitmapScaler * pScaler = NULL;
-	IWICPalette * pPalette = NULL;
 	IWICColorContext ** inputContexts = NULL;
 	IWICColorTransform * colorTransform = NULL;
 	IWICColorContext ** outputContexts = NULL;
 
 	//stuff that doesn't
 	IWICBitmapSource * toOutput = NULL;
-	WICPixelFormatGUID inputFormat = { 0 };
-	WICPixelFormatGUID outputFormat = GUID_WICPixelFormat32bppBGRA, selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
+	
 	double originalDpiX = 0.0, originalDpiY = 0.0;
 	UINT sizeX = 0, sizeY = 0, colorCount = 0, finalCount = 0 ,actualContexts = 0;
 	BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE, isCMYK = FALSE;
+	WICPixelFormatGUID inputFormat = { 0 };
 
 	HRESULT hr = CoCreateInstance(
 		CLSID_WICImagingFactory,
@@ -268,19 +265,8 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 
 	if (SUCCEEDED(hr))
 	{
-		hr = pFactory->CreateStream(&pOutStream);
-	}
-
-	if (SUCCEEDED(hr))
-	{
 		hr = pStream->InitializeFromFilename(info->inPath, GENERIC_READ);
 	}	
-
-	// Create the output frame
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutStream->InitializeFromFilename(info->outPath, GENERIC_READ | GENERIC_WRITE);
-	}
 
 	if (SUCCEEDED(hr))
 	{
@@ -400,164 +386,18 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 		toOutput = pScaler;
 	}
 
-
-	if (SUCCEEDED(hr))
+	if(SUCCEEDED(hr))
 	{
-		if (!IsEqualGUID(inputFormat, GUID_WICPixelFormatBlackWhite))
-		{
-			hr = pFactory->CreatePalette(&pPalette);
-
-			if (SUCCEEDED(hr))
-			{
-				hr = HasAlpha(toOutput, pFactory, hasAlpha);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pPalette->InitializeFromBitmap(toOutput, 256U, hasAlpha);
-			}			
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pPalette->GetColorCount(&colorCount);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pPalette->IsBlackWhite(&isBlackAndWhite);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = pPalette->IsGrayscale(&isGreyScale);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				outputFormat = selectedOutputFormat = GetOutputPixelFormat(
-					colorCount,
-					hasAlpha,
-					isBlackAndWhite,
-					isGreyScale,
-					hasPalette
-					);
-
-				if (!hasPalette)
-				{
-					SafeRelease(&pPalette);
-				}
-			}
-		}
-		else
-		{
-			outputFormat = selectedOutputFormat = inputFormat;
-		}
+		hr = OutputImage(pFactory, toOutput, info->outPath, GUID_ContainerFormatPng, info->dpi, newSizeX, newSizeY);
 	}
-	// if we need to convert the pixel format... we should do so
-	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
-	{		
-		hr = pFactory->CreateFormatConverter(&pConverter);
-	}
-
-	if (SUCCEEDED(hr) && pConverter)
-	{
-		pConverter->Initialize(
-			toOutput,
-			outputFormat,
-			WICBitmapDitherTypeNone,
-			pPalette,
-			0.0F,
-			WICBitmapPaletteTypeCustom
-			);
-	}
-
-	if (SUCCEEDED(hr) && pConverter)
-	{
-		toOutput = pConverter;
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pFactory->CreateEncoder(GUID_ContainerFormatPng, NULL, &pEncoder);	
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pEncoder->Initialize(pOutStream, WICBitmapEncoderNoCache);
-	}
-	if (SUCCEEDED(hr))
-	{
-		hr = pEncoder->CreateNewFrame(&pOutputFrame, &pPropBag);
-	}
-
-	// this doesn't actually do anything at the moment, but we should keep it around as a sample of
-	// how to do it in the future
-	if (SUCCEEDED(hr))
-	{        
-		PROPBAG2 option = { 0 };
-		option.pstrName = L"InterlaceOption";
-		VARIANT varValue;    
-		VariantInit(&varValue);
-		varValue.vt = VT_BOOL;
-		varValue.boolVal = 0;      
-		hr = pPropBag->Write(1, &option, &varValue); 
-		if (SUCCEEDED(hr))
-		{
-			hr = pOutputFrame->Initialize(pPropBag);
-		}
-	}	
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputFrame->SetResolution(info->dpi, info->dpi);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputFrame->SetSize(newSizeX, newSizeY);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputFrame->SetPixelFormat(&outputFormat);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = IsEqualGUID(outputFormat, selectedOutputFormat) ? S_OK : E_FAIL;
-	}
-	// disabled as this was adding 4k to the image
-	/*if (SUCCEEDED(hr))
-	{
-	hr = pOutputFrame->SetColorContexts(1, outputContexts);
-	}*/
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputFrame->WriteSource(toOutput, NULL);
-	}	
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pOutputFrame->Commit();
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		hr = pEncoder->Commit();
-	}
+	
 	// cleanup factory
 	SafeRelease(&pFactory);
 	SafeRelease(&pDecoder);
-	SafeRelease(&pEncoder);
 	SafeRelease(&pPropBag);
-	SafeRelease(&pOutputFrame);
 	SafeRelease(&pStream);
-	SafeRelease(&pOutStream);
 	SafeRelease(&pIDecoderFrame);
-	SafeRelease(&pConverter);
 	SafeRelease(&pScaler);
-	SafeRelease(&pPalette);
 	SafeRelease(&colorTransform);
 	for(UINT i = 0; i < actualContexts; ++i)
 	{
@@ -614,137 +454,9 @@ static DWORD _stdcall WriteStdError(LPCWSTR error, size_t length)
 	return 0;
 }
 
-static WICPixelFormatGUID _stdcall GetOutputPixelFormat(UINT colorCount, BOOL hasAlpha, BOOL isBlackAndWhite, BOOL isGreyScale, BOOL & hasPalette)
-{
-	if (isBlackAndWhite)
-	{
-		return GUID_WICPixelFormatBlackWhite;
-	}
-	else if (!hasAlpha)
-	{
-		if (colorCount < 3U)
-		{
-			hasPalette = TRUE;
-			return GUID_WICPixelFormat1bppIndexed;
-		}
-		if (colorCount < 5U)
-		{
-			hasPalette = TRUE;
-			return GUID_WICPixelFormat2bppIndexed;					
-		}
-		else if (colorCount < 17U)
-		{
-			hasPalette = TRUE;
-			return GUID_WICPixelFormat4bppIndexed;					
-		}
-		// while it would be convenient to check to see if they have less that 257 colors
-		// unfortunately the way the palette system works this would result in all images
-		// without alpha being caught in this logical trap. So until I find a better way
-		// to deal with it... it will have to have 255 colors or less to end up in the 8bpp
-		// range.
-		else if (colorCount < 256U)
-		{
-			hasPalette = TRUE;
-			return GUID_WICPixelFormat8bppIndexed;
-		}
-		else
-		{
-			return GUID_WICPixelFormat24bppBGR;
-		}
-	}
-	return GUID_WICPixelFormat32bppBGRA;
-}
 
-static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory * factory, BOOL & hasAlpha)
-{
-	// stuff that has to be cleaned up
-	IWICFormatConverter * converter = NULL;
-	IWICBitmap * bitmap = NULL;
-	IWICBitmapLock * lock = NULL;
 
-	// stuff that doesn't
-	WICInProcPointer buffer = NULL;
-	UINT * bitmapPixels = NULL;
-	IWICBitmapSource * finalSource = NULL;	
-	WICPixelFormatGUID inputFormat = { 0 };	
-	UINT sizeX = 0, sizeY = 0, bufferSize = 0;
 
-	HRESULT hr = source->GetPixelFormat(&inputFormat);	
-	hasAlpha = false;
-	if (SUCCEEDED(hr))
-	{
-		if(IsPixelFormatRGBWithAlpha(inputFormat))
-		{
-			if (IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppBGRA))
-			{
-				finalSource = source;
-			}
-			else
-			{
-				hr = factory->CreateFormatConverter(&converter);
-				if (SUCCEEDED(hr))
-				{
-					hr = converter->Initialize(
-						source,
-						GUID_WICPixelFormat32bppBGRA,
-						WICBitmapDitherTypeNone,
-						NULL,
-						0.0,
-						WICBitmapPaletteTypeCustom
-						);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					finalSource = converter;
-				}				
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = factory->CreateBitmapFromSource(finalSource, WICBitmapCacheOnDemand, &bitmap);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = bitmap->GetSize(&sizeX, &sizeY);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				WICRect lockRectangle = { 0, 0, sizeX, sizeY};
-				hr = bitmap->Lock(&lockRectangle, WICBitmapLockRead, &lock);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = lock->GetDataPointer(&bufferSize, &buffer);				
-			}
-
-			if(SUCCEEDED(hr))
-			{
-				// it's little endian, as such alpha will be stored in the
-				// pixel with the highest address if we're in BGRA format
-				size_t i = bufferSize - 1;
-				do
-				{					
-					if(buffer[i] != 0xFFU)
-					{
-						hasAlpha = TRUE;
-						break;
-					}
-					i -= 4;
-				}while(i > 3);
-			}
-
-			SafeRelease(&converter);
-			SafeRelease(&lock);
-			SafeRelease(&bitmap);
-		}
-	}
-
-	return hr;
-}
 
 static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICColorContext *** toCreate, UINT count)
 {
@@ -768,18 +480,3 @@ static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICCo
 	return hr;
 }
 
-static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixelFormat)
-{
-	return InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppBGRA) ||
-		InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppPBGRA) ||
-		InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppRGBA) ||
-		InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppPRGBA) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat128bppPRGBAFloat) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat128bppRGBAFixedPoint) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat128bppRGBAFloat) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppBGRA) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppBGRAFixedPoint) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPBGRA) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppPRGBA) ||
-		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppRGBA);
-}
