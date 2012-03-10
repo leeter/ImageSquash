@@ -331,13 +331,20 @@ STDMETHODIMP CreateStreamForPath(IWICImagingFactory * factory, IWICStream ** str
 	return hr;
 }
 
-STDMETHODIMP OutputImage(IWICImagingFactory *factory, IWICBitmapSource * toOutput, LPCWSTR OutputPath, GUID outputFormat, double dpi, UINT sizeX, UINT sizeY)
+STDMETHODIMP OutputImage(IWICImagingFactory *factory, IWICBitmapSource * toOutput, LPCWSTR outputPath, GUID outputFormat, double dpi, UINT sizeX, UINT sizeY)
 {
 	IWICStream * outputStream = NULL;
 	WCHAR outputPathBuffer[MAX_PATH];
-	HRESULT hr = S_OK;
+
+	HRESULT hr = StringCchCopy(outputPathBuffer, MAX_PATH, outputPath);
+	if (FAILED(hr))
+	{
+		return hr;
+	}
+
 	if(IsEqualGUID(outputFormat, GUID_ContainerFormatPng))
 	{
+		
 		if(!PathRenameExtension(outputPathBuffer, L".png"))
 		{
 			// TODO: write out last error to stderr

@@ -7,6 +7,6 @@
 
 #include "stdafx.h"
 
-STDMETHODIMP OutputImage(IWICImagingFactory *factory, IWICBitmapSource * toOutput, LPCWSTR OutputPath, GUID outputFormat, double dpi, UINT sizeX, UINT sizeY);
+STDMETHODIMP OutputImage(IWICImagingFactory *factory, IWICBitmapSource * toOutput, LPCWSTR outputPath, GUID outputFormat, double dpi, UINT sizeX, UINT sizeY);
 
 #endif // OUTPUT_H
