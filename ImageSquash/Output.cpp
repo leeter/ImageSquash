@@ -149,7 +149,7 @@ static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory *
 
 	return hr;
 }
-static STDMETHODIMP OutputPng(IWICImagingFactory *factory, IWICBitmapSource * toOutput, IWICStream * outputStream, double dpi, UINT sizeX, UINT sizeY)
+static STDMETHODIMP OutputJpg(OutputInfo * info, IWICStream * outputStream)
 {
 	IWICPalette * palette = NULL;
 	IWICFormatConverter * converter = NULL;
@@ -158,28 +158,177 @@ static STDMETHODIMP OutputPng(IWICImagingFactory *factory, IWICBitmapSource * to
 	IPropertyBag2 * propBag = NULL;
 
 	// hand off pointer no cleanup
-	IWICBitmapSource * forOutput = toOutput;
+	IWICBitmapSource * forOutput = info->source;
+
+	BOOL isGreyScale = FALSE;
+	WICPixelFormatGUID inputFormat = { 0 }, outputFormat = GUID_WICPixelFormat24bppBGR, selectedOutputFormat = GUID_WICPixelFormat24bppBGR;
+	UINT colorCount = 0;
+
+	HRESULT hr = forOutput->GetPixelFormat(&inputFormat);
+
+	if (SUCCEEDED(hr))
+	{
+		hr = info->factory->CreatePalette(&palette);
+
+		if (SUCCEEDED(hr))
+		{
+			hr = palette->InitializeFromBitmap(forOutput, 256U, FALSE);
+		}			
+
+		if (SUCCEEDED(hr))
+		{
+			hr = palette->GetColorCount(&colorCount);
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			hr = palette->IsGrayscale(&isGreyScale);
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			// Jpeg only supports 8bit greyscale and 24bit BGR we shouldn't
+			// waste our time trying to get anything else
+			if(isGreyScale && colorCount <  256U)
+			{
+				outputFormat = GUID_WICPixelFormat8bppGray;
+			}
+		}
+
+		SafeRelease(&palette);
+	}
+	// if we need to convert the pixel format... we should do so
+	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
+	{		
+		hr = info->factory->CreateFormatConverter(&converter);
+	}
+
+	if (SUCCEEDED(hr) && converter)
+	{
+		converter->Initialize(
+			forOutput,
+			outputFormat,
+			WICBitmapDitherTypeNone,
+			palette,
+			0.0F,
+			WICBitmapPaletteTypeCustom
+			);
+	}
+
+	if (SUCCEEDED(hr) && converter)
+	{
+		forOutput = converter;
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = info->factory->CreateEncoder(GUID_ContainerFormatJpeg, NULL, &encoder);	
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = encoder->Initialize(outputStream, WICBitmapEncoderNoCache);
+	}
+	if (SUCCEEDED(hr))
+	{
+		hr = encoder->CreateNewFrame(&encoderFrame, &propBag);
+	}
+
+	// this doesn't actually do anything at the moment, but we should keep it around as a sample of
+	// how to do it in the future
+	if (SUCCEEDED(hr))
+	{        
+		PROPBAG2 option = { 0 };
+		option.pstrName = L"ImageQuality";
+		VARIANT varValue;    
+		VariantInit(&varValue);
+		varValue.vt = VT_R4;
+		varValue.fltVal = 0.8f;      
+		hr = propBag->Write(1, &option, &varValue); 
+		if (SUCCEEDED(hr))
+		{
+			hr = encoderFrame->Initialize(propBag);
+		}
+	}	
+
+	if (SUCCEEDED(hr))
+	{
+		hr = encoderFrame->SetResolution(info->dpi, info->dpi);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = encoderFrame->SetSize(info->sizeX, info->sizeY);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = encoderFrame->SetPixelFormat(&outputFormat);
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = IsEqualGUID(outputFormat, selectedOutputFormat) ? S_OK : E_FAIL;
+	}
+	// disabled as this was adding 4k to the image
+	/*if (SUCCEEDED(hr))
+	{
+	hr = pOutputFrame->SetColorContexts(1, outputContexts);
+	}*/
+
+	if (SUCCEEDED(hr))
+	{
+		hr = encoderFrame->WriteSource(forOutput, NULL);
+	}	
+
+	if (SUCCEEDED(hr))
+	{
+		hr = encoderFrame->Commit();
+	}
+
+	if (SUCCEEDED(hr))
+	{
+		hr = encoder->Commit();
+	}
+
+	SafeRelease(&palette);
+	SafeRelease(&converter);
+	SafeRelease(&propBag);
+	SafeRelease(&encoderFrame);
+	SafeRelease(&encoder);
+	return hr;
+}
+static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
+{
+	IWICPalette * palette = NULL;
+	IWICFormatConverter * converter = NULL;
+	IWICBitmapEncoder * encoder = NULL;
+	IWICBitmapFrameEncode * encoderFrame = NULL;
+	IPropertyBag2 * propBag = NULL;
+
+	// hand off pointer no cleanup
+	IWICBitmapSource * forOutput = info->source;
 
 	BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE;
 	WICPixelFormatGUID inputFormat = { 0 }, outputFormat = GUID_WICPixelFormat32bppBGRA, selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
 	UINT colorCount = 0;
 
-	HRESULT hr = toOutput->GetPixelFormat(&inputFormat);
+	HRESULT hr = forOutput->GetPixelFormat(&inputFormat);
 
 	if (SUCCEEDED(hr))
 	{
 		if (!IsEqualGUID(inputFormat, GUID_WICPixelFormatBlackWhite))
 		{
-			hr = factory->CreatePalette(&palette);
+			hr = info->factory->CreatePalette(&palette);
 
 			if (SUCCEEDED(hr))
 			{
-				hr = HasAlpha(toOutput, factory, hasAlpha);
+				hr = HasAlpha(forOutput, info->factory, hasAlpha);
 			}
 
 			if (SUCCEEDED(hr))
 			{
-				hr = palette->InitializeFromBitmap(toOutput, 256U, hasAlpha);
+				hr = palette->InitializeFromBitmap(forOutput, 256U, hasAlpha);
 			}			
 
 			if (SUCCEEDED(hr))
@@ -221,13 +370,13 @@ static STDMETHODIMP OutputPng(IWICImagingFactory *factory, IWICBitmapSource * to
 	// if we need to convert the pixel format... we should do so
 	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
 	{		
-		hr = factory->CreateFormatConverter(&converter);
+		hr = info->factory->CreateFormatConverter(&converter);
 	}
 
 	if (SUCCEEDED(hr) && converter)
 	{
 		converter->Initialize(
-			toOutput,
+			forOutput,
 			outputFormat,
 			WICBitmapDitherTypeNone,
 			palette,
@@ -243,7 +392,7 @@ static STDMETHODIMP OutputPng(IWICImagingFactory *factory, IWICBitmapSource * to
 
 	if (SUCCEEDED(hr))
 	{
-		hr = factory->CreateEncoder(GUID_ContainerFormatPng, NULL, &encoder);	
+		hr = info->factory->CreateEncoder(GUID_ContainerFormatPng, NULL, &encoder);	
 	}
 
 	if (SUCCEEDED(hr))
@@ -274,12 +423,12 @@ static STDMETHODIMP OutputPng(IWICImagingFactory *factory, IWICBitmapSource * to
 
 	if (SUCCEEDED(hr))
 	{
-		hr = encoderFrame->SetResolution(dpi, dpi);
+		hr = encoderFrame->SetResolution(info->dpi, info->dpi);
 	}
 
 	if (SUCCEEDED(hr))
 	{
-		hr = encoderFrame->SetSize(sizeX, sizeY);
+		hr = encoderFrame->SetSize(info->sizeX, info->sizeY);
 	}
 
 	if (SUCCEEDED(hr))
@@ -299,7 +448,7 @@ static STDMETHODIMP OutputPng(IWICImagingFactory *factory, IWICBitmapSource * to
 
 	if (SUCCEEDED(hr))
 	{
-		hr = encoderFrame->WriteSource(toOutput, NULL);
+		hr = encoderFrame->WriteSource(forOutput, NULL);
 	}	
 
 	if (SUCCEEDED(hr))
@@ -331,7 +480,7 @@ STDMETHODIMP CreateStreamForPath(IWICImagingFactory * factory, IWICStream ** str
 	return hr;
 }
 
-STDMETHODIMP OutputImage(IWICImagingFactory *factory, IWICBitmapSource * toOutput, LPCWSTR outputPath, GUID outputFormat, double dpi, UINT sizeX, UINT sizeY)
+STDMETHODIMP OutputImage(OutputInfo * info, LPCWSTR outputPath, GUID outputFormat)
 {
 	IWICStream * outputStream = NULL;
 	WCHAR outputPathBuffer[MAX_PATH];
@@ -344,7 +493,7 @@ STDMETHODIMP OutputImage(IWICImagingFactory *factory, IWICBitmapSource * toOutpu
 
 	if(IsEqualGUID(outputFormat, GUID_ContainerFormatPng))
 	{
-		
+
 		if(!PathRenameExtension(outputPathBuffer, L".png"))
 		{
 			// TODO: write out last error to stderr
@@ -353,14 +502,35 @@ STDMETHODIMP OutputImage(IWICImagingFactory *factory, IWICBitmapSource * toOutpu
 
 		if (SUCCEEDED(hr))
 		{
-			hr = CreateStreamForPath(factory, &outputStream, outputPathBuffer);
+			hr = CreateStreamForPath(info->factory, &outputStream, outputPathBuffer);
 		}
 
 		if (SUCCEEDED(hr))
 		{
-			hr = OutputPng(factory, toOutput, outputStream, dpi, sizeX, sizeY);
+			hr = OutputPng(info, outputStream);
 		}
-		
+
+	}
+	/* JPEG */
+	else if(IsEqualGUID(outputFormat, GUID_ContainerFormatJpeg))
+	{
+
+		if(!PathRenameExtension(outputPathBuffer, L".jpg"))
+		{
+			// TODO: write out last error to stderr
+			hr = E_FAIL;
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			hr = CreateStreamForPath(info->factory, &outputStream, outputPathBuffer);
+		}
+
+		if (SUCCEEDED(hr))
+		{
+			hr = OutputJpg(info, outputStream);
+		}
+
 	}
 
 	SafeRelease(&outputStream);	
