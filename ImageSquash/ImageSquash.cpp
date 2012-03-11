@@ -388,7 +388,8 @@ static STDMETHODIMP DownSampleAndConvertImage(TransformInfo * info)
 
 	if(SUCCEEDED(hr))
 	{
-		hr = OutputImage(pFactory, toOutput, info->outPath, GUID_ContainerFormatPng, info->dpi, newSizeX, newSizeY);
+		OutputInfo outputInfo = { pFactory, toOutput, info->dpi, newSizeX, newSizeY};
+		hr = OutputImage(&outputInfo, info->outPath, GUID_ContainerFormatPng);
 	}
 	
 	// cleanup factory
