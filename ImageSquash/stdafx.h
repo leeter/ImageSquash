@@ -14,7 +14,6 @@
 #define NORPC
 #define NODRAWTEXT
 #define NOICONS
-#define NOWINMESSAGES
 #define NOMB
 #define NOMETAFILE
 #define NOWINABLE
@@ -33,12 +32,15 @@
 #define NO_SHLWAPI_GDI 1
 #include "targetver.h"
 #include <Windows.h>
-#include <tchar.h>
 #include <Icm.h>
 #include <wincodec.h>
+#include <new>
 #include <vector>
+#include <memory>
+#include <string>
+#include <atlbase.h>
 #include <Shlwapi.h>
-#include <math.h>
+#include <cmath>
 #include <strsafe.h>
 #include "banned.h"
 
