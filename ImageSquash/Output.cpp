@@ -1,6 +1,6 @@
 #include "stdafx.h"
 #include "Output.h"
-
+using namespace ImageSquash::Output;
 
 static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixelFormat)
 {
@@ -62,14 +62,14 @@ static WICPixelFormatGUID _stdcall GetOutputPixelFormat(UINT colorCount, BOOL ha
 static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory * factory, BOOL & hasAlpha)
 {
 	// stuff that has to be cleaned up
-	IWICFormatConverter * converter = NULL;
-	IWICBitmap * bitmap = NULL;
-	IWICBitmapLock * lock = NULL;
+	CComPtr<IWICFormatConverter> converter = nullptr;
+	CComPtr<IWICBitmap> bitmap = nullptr;
+	CComPtr<IWICBitmapLock> lock = nullptr;
 
 	// stuff that doesn't
-	WICInProcPointer buffer = NULL;
-	UINT * bitmapPixels = NULL;
-	IWICBitmapSource * finalSource = NULL;	
+	WICInProcPointer buffer = nullptr;
+	UINT * bitmapPixels = nullptr;
+	IWICBitmapSource * finalSource = nullptr;	
 	WICPixelFormatGUID inputFormat = { 0 };	
 	UINT sizeX = 0, sizeY = 0, bufferSize = 0;
 
@@ -140,25 +140,21 @@ static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory *
 					i -= 4;
 				}while(i > 3);
 			}
-
-			SafeRelease(&converter);
-			SafeRelease(&lock);
-			SafeRelease(&bitmap);
 		}
 	}
 
 	return hr;
 }
-static STDMETHODIMP OutputJpg(OutputInfo * info, IWICStream * outputStream)
+static STDMETHODIMP OutputJpg(const OutputInfo & info, IWICStream * outputStream)
 {
-	IWICPalette * palette = NULL;
-	IWICFormatConverter * converter = NULL;
-	IWICBitmapEncoder * encoder = NULL;
-	IWICBitmapFrameEncode * encoderFrame = NULL;
-	IPropertyBag2 * propBag = NULL;
+	CComPtr<IWICPalette> palette = nullptr;
+	CComPtr<IWICFormatConverter> converter = nullptr;
+	CComPtr<IWICBitmapEncoder> encoder = nullptr;
+	CComPtr<IWICBitmapFrameEncode> encoderFrame = nullptr;
+	CComPtr<IPropertyBag2> propBag = nullptr;
 
 	// hand off pointer no cleanup
-	IWICBitmapSource * forOutput = info->source;
+	IWICBitmapSource * forOutput = info.source;
 
 	BOOL isGreyScale = FALSE;
 	WICPixelFormatGUID inputFormat = { 0 }, outputFormat = GUID_WICPixelFormat24bppBGR, selectedOutputFormat = GUID_WICPixelFormat24bppBGR;
@@ -168,7 +164,7 @@ static STDMETHODIMP OutputJpg(OutputInfo * info, IWICStream * outputStream)
 
 	if (SUCCEEDED(hr))
 	{
-		hr = info->factory->CreatePalette(&palette);
+		hr = info.factory->CreatePalette(&palette);
 
 		if (SUCCEEDED(hr))
 		{
@@ -195,12 +191,12 @@ static STDMETHODIMP OutputJpg(OutputInfo * info, IWICStream * outputStream)
 			}
 		}
 
-		SafeRelease(&palette);
+		palette.Release();
 	}
 	// if we need to convert the pixel format... we should do so
 	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
 	{		
-		hr = info->factory->CreateFormatConverter(&converter);
+		hr = info.factory->CreateFormatConverter(&converter);
 	}
 
 	if (SUCCEEDED(hr) && converter)
@@ -222,7 +218,7 @@ static STDMETHODIMP OutputJpg(OutputInfo * info, IWICStream * outputStream)
 
 	if (SUCCEEDED(hr))
 	{
-		hr = info->factory->CreateEncoder(GUID_ContainerFormatJpeg, NULL, &encoder);	
+		hr = info.factory->CreateEncoder(GUID_ContainerFormatJpeg, NULL, &encoder);	
 	}
 
 	if (SUCCEEDED(hr))
@@ -253,12 +249,12 @@ static STDMETHODIMP OutputJpg(OutputInfo * info, IWICStream * outputStream)
 
 	if (SUCCEEDED(hr))
 	{
-		hr = encoderFrame->SetResolution(info->dpi, info->dpi);
+		hr = encoderFrame->SetResolution(info.dpi, info.dpi);
 	}
 
 	if (SUCCEEDED(hr))
 	{
-		hr = encoderFrame->SetSize(info->sizeX, info->sizeY);
+		hr = encoderFrame->SetSize(info.sizeX, info.sizeY);
 	}
 
 	if (SUCCEEDED(hr))
@@ -291,23 +287,18 @@ static STDMETHODIMP OutputJpg(OutputInfo * info, IWICStream * outputStream)
 		hr = encoder->Commit();
 	}
 
-	SafeRelease(&palette);
-	SafeRelease(&converter);
-	SafeRelease(&propBag);
-	SafeRelease(&encoderFrame);
-	SafeRelease(&encoder);
 	return hr;
 }
-static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
+static STDMETHODIMP OutputPng(const OutputInfo & info, IWICStream * outputStream)
 {
-	IWICPalette * palette = NULL;
-	IWICFormatConverter * converter = NULL;
-	IWICBitmapEncoder * encoder = NULL;
-	IWICBitmapFrameEncode * encoderFrame = NULL;
-	IPropertyBag2 * propBag = NULL;
+	CComPtr<IWICPalette> palette = nullptr;
+	CComPtr<IWICFormatConverter> converter = nullptr;
+	CComPtr<IWICBitmapEncoder> encoder = nullptr;
+	CComPtr<IWICBitmapFrameEncode> encoderFrame = nullptr;
+	CComPtr<IPropertyBag2> propBag = nullptr;
 
 	// hand off pointer no cleanup
-	IWICBitmapSource * forOutput = info->source;
+	IWICBitmapSource * forOutput = info.source;
 
 	BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE;
 	WICPixelFormatGUID inputFormat = { 0 }, outputFormat = GUID_WICPixelFormat32bppBGRA, selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
@@ -319,11 +310,11 @@ static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
 	{
 		if (!IsEqualGUID(inputFormat, GUID_WICPixelFormatBlackWhite))
 		{
-			hr = info->factory->CreatePalette(&palette);
+			hr = info.factory->CreatePalette(&palette);
 
 			if (SUCCEEDED(hr))
 			{
-				hr = HasAlpha(forOutput, info->factory, hasAlpha);
+				hr = HasAlpha(forOutput, info.factory, hasAlpha);
 			}
 
 			if (SUCCEEDED(hr))
@@ -358,7 +349,7 @@ static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
 
 				if (!hasPalette)
 				{
-					SafeRelease(&palette);
+					palette.Release();
 				}
 			}
 		}
@@ -370,7 +361,7 @@ static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
 	// if we need to convert the pixel format... we should do so
 	if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
 	{		
-		hr = info->factory->CreateFormatConverter(&converter);
+		hr = info.factory->CreateFormatConverter(&converter);
 	}
 
 	if (SUCCEEDED(hr) && converter)
@@ -392,7 +383,7 @@ static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
 
 	if (SUCCEEDED(hr))
 	{
-		hr = info->factory->CreateEncoder(GUID_ContainerFormatPng, NULL, &encoder);	
+		hr = info.factory->CreateEncoder(GUID_ContainerFormatPng, NULL, &encoder);	
 	}
 
 	if (SUCCEEDED(hr))
@@ -423,12 +414,12 @@ static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
 
 	if (SUCCEEDED(hr))
 	{
-		hr = encoderFrame->SetResolution(info->dpi, info->dpi);
+		hr = encoderFrame->SetResolution(info.dpi, info.dpi);
 	}
 
 	if (SUCCEEDED(hr))
 	{
-		hr = encoderFrame->SetSize(info->sizeX, info->sizeY);
+		hr = encoderFrame->SetSize(info.sizeX, info.sizeY);
 	}
 
 	if (SUCCEEDED(hr))
@@ -461,28 +452,23 @@ static STDMETHODIMP OutputPng(OutputInfo * info, IWICStream * outputStream)
 		hr = encoder->Commit();
 	}
 
-	SafeRelease(&palette);
-	SafeRelease(&converter);
-	SafeRelease(&propBag);
-	SafeRelease(&encoderFrame);
-	SafeRelease(&encoder);
 	return hr;
 }
 
-STDMETHODIMP CreateStreamForPath(IWICImagingFactory * factory, IWICStream ** stream, LPCWSTR path)
+STDMETHODIMP CreateStreamForPath(IWICImagingFactory * factory, CComPtr<IWICStream>& stream, LPCWSTR path)
 {
-	HRESULT hr = factory->CreateStream(stream);
+	HRESULT hr = factory->CreateStream(&stream);
 
 	if(SUCCEEDED(hr))
 	{
-		hr = (*stream)->InitializeFromFilename(path, GENERIC_WRITE);
+		hr = stream->InitializeFromFilename(path, GENERIC_WRITE);
 	}
 	return hr;
 }
 
-STDMETHODIMP OutputImage(OutputInfo * info, LPCWSTR outputPath, GUID outputFormat)
+STDMETHODIMP ImageSquash::Output::OutputImage(const OutputInfo & info, LPCWSTR outputPath, GUID outputFormat)
 {
-	IWICStream * outputStream = NULL;
+	CComPtr<IWICStream> outputStream = nullptr;
 	WCHAR outputPathBuffer[MAX_PATH];
 
 	HRESULT hr = StringCchCopy(outputPathBuffer, MAX_PATH, outputPath);
@@ -502,7 +488,7 @@ STDMETHODIMP OutputImage(OutputInfo * info, LPCWSTR outputPath, GUID outputForma
 
 		if (SUCCEEDED(hr))
 		{
-			hr = CreateStreamForPath(info->factory, &outputStream, outputPathBuffer);
+			hr = CreateStreamForPath(info.factory, outputStream, outputPathBuffer);
 		}
 
 		if (SUCCEEDED(hr))
@@ -523,7 +509,7 @@ STDMETHODIMP OutputImage(OutputInfo * info, LPCWSTR outputPath, GUID outputForma
 
 		if (SUCCEEDED(hr))
 		{
-			hr = CreateStreamForPath(info->factory, &outputStream, outputPathBuffer);
+			hr = CreateStreamForPath(info.factory, outputStream, outputPathBuffer);
 		}
 
 		if (SUCCEEDED(hr))
@@ -533,6 +519,5 @@ STDMETHODIMP OutputImage(OutputInfo * info, LPCWSTR outputPath, GUID outputForma
 
 	}
 
-	SafeRelease(&outputStream);	
 	return hr;
 }

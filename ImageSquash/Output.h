@@ -6,7 +6,8 @@
 #endif
 
 #include "stdafx.h"
-
+namespace ImageSquash{
+	namespace Output{
 struct OutputInfo
 {
 	IWICImagingFactory * factory;
@@ -16,6 +17,7 @@ struct OutputInfo
 	UINT sizeY;
 };
 
-STDMETHODIMP OutputImage(OutputInfo * info, LPCWSTR outputPath, GUID outputFormat);
-
+STDMETHODIMP OutputImage(const OutputInfo & info, LPCWSTR outputPath, GUID outputFormat);
+	}
+}
 #endif // OUTPUT_H
