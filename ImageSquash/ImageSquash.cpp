@@ -23,17 +23,9 @@ static STDMETHODIMP HasAlpha(IWICBitmapSource * source, IWICImagingFactory * fac
 static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICColorContext *** toCreate, UINT count);
 static DWORD _stdcall WriteOutLastError();
 static DWORD _stdcall WriteStdError(LPCWSTR error, size_t length);
-static void CALLBACK DownSampleThread(
-	__inout      PTP_CALLBACK_INSTANCE Instance,
-	__inout_opt  PVOID Context,
-	__inout      PTP_WORK Work
-	);
-static STDMETHODIMP QueueFileForDownSample(WIN32_FIND_DATA &file, LPCWSTR inPath, LPCWSTR outPath, LPCWSTR profilePath, double dpi, std::vector<std::shared_ptr<_TP_WORK>> & worklist);
+static STDMETHODIMP QueueFileForDownSample(WIN32_FIND_DATA &file, LPCWSTR inPath, LPCWSTR outPath, LPCWSTR profilePath, double dpi, std::vector<TransformInfo> & worklist);
 static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixelFormat);
 
-auto threadPoolWorkDelete = [](PTP_WORK work){
-	CloseThreadpoolWork(work);
-};
 
 /// <summary>program entry point</summary>
 int _tmain(int argc, _TCHAR* argv[])
@@ -43,7 +35,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	HRESULT hr = S_OK;
 	double dpi = 72.0;
 	size_t actuallength = 0;	
-	std::vector<std::shared_ptr<_TP_WORK>> worklist;
+	std::vector<TransformInfo> worklist;
 	HANDLE consoleOut = GetStdHandle(STD_OUTPUT_HANDLE);
 	HANDLE consoleIn = GetStdHandle(STD_INPUT_HANDLE);
 	HANDLE standardError = GetStdHandle(STD_ERROR_HANDLE);
@@ -100,7 +92,7 @@ int _tmain(int argc, _TCHAR* argv[])
 	*/
 	for(int i = 1; i < argc; ++i)
 	{
-		StringCchLength(argv[i], 6, &actuallength);
+		StringCchLength(argv[i], 5, &actuallength);
 		if(CompareStringOrdinal(argv[i], actuallength, L"-dpi", 4, TRUE) == CSTR_EQUAL)
 		{
 			++i;
@@ -138,6 +130,7 @@ int _tmain(int argc, _TCHAR* argv[])
 		GetColorDirectory(NULL, profilePath , &bufferSize);
 	}
 
+	// all of this is is unnecessary in C++11 as we would have the <filesystem> header
 	WIN32_FIND_DATA file = {0};
 	WIN32_FIND_DATA outFile = {0};
 	HANDLE searchHandle = FindFirstFile(argv[1], &file);
@@ -169,12 +162,20 @@ int _tmain(int argc, _TCHAR* argv[])
 	{
 		hr = QueueFileForDownSample(file, argv[1], argv[2], profilePath, dpi, worklist);
 	}
+	Concurrency::parallel_for_each(worklist.begin(), worklist.end(),
+		[](const TransformInfo & info){
+			HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+			if (SUCCEEDED(hr))
+			{
+				DownSampleAndConvertImage(info);
+			}
 
-	auto itrEnd = worklist.end();
-	for (auto itr = worklist.begin(); itr != itrEnd; ++itr)
-	{
-		WaitForThreadpoolWorkCallbacks(itr->get(), FALSE);
-	}
+			if (SUCCEEDED(hr))
+			{
+				CoUninitialize();
+			}
+	});
+
 	FindClose(searchHandle);
 	FindClose(outSearchHandle);
 
@@ -182,53 +183,22 @@ int _tmain(int argc, _TCHAR* argv[])
 }
 
 /// <summary>Queues and image to be downsampled</summary>
-static STDMETHODIMP QueueFileForDownSample(WIN32_FIND_DATA &file, LPCWSTR inPath, LPCWSTR outPath, LPCWSTR profilePath, double dpi, std::vector<std::shared_ptr<_TP_WORK>> & worklist)
+static STDMETHODIMP QueueFileForDownSample(WIN32_FIND_DATA &file, LPCWSTR inPath, LPCWSTR outPath, LPCWSTR profilePath, double dpi, std::vector<TransformInfo> & worklist)
 {
 	HRESULT hr = S_OK;
 	if(!(file.dwFileAttributes & (FILE_ATTRIBUTE_DEVICE | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_VIRTUAL | FILE_ATTRIBUTE_TEMPORARY)))
 	{
-		PTP_WORK work = nullptr;
-		TransformInfo * info = new (std::nothrow) TransformInfo();
-		if(info == nullptr)
-		{
-			hr = E_OUTOFMEMORY;
-		}
-		StringCchCopy(info->inPath, MAX_PATH, inPath);
-		StringCchCopy(info->outPath, MAX_PATH, outPath);
-		info->dpi = dpi;
-		info->hr = S_OK;
-		info->profilePath = profilePath;
+		TransformInfo info;
+		
+		StringCchCopy(info.inPath, MAX_PATH, inPath);
+		StringCchCopy(info.outPath, MAX_PATH, outPath);
+		info.dpi = dpi;
+		info.hr = S_OK;
+		info.profilePath = profilePath;
 
-		work = CreateThreadpoolWork(DownSampleThread, info, NULL);
-		// unable to create the work item
-		if(work == nullptr)
-		{
-			WriteOutLastError();
-			return E_WORKITEMQUEUEFAIL;
-		}
-		worklist.push_back(std::shared_ptr<_TP_WORK>(work, threadPoolWorkDelete));
-		SubmitThreadpoolWork(work);
+		worklist.push_back(info);
 	}
 	return hr;
-}
-
-static void CALLBACK DownSampleThread(
-	__inout      PTP_CALLBACK_INSTANCE Instance,
-	__inout_opt  PVOID Context,
-	__inout      PTP_WORK Work
-	)
-{
-	HRESULT hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
-	if (SUCCEEDED(hr))
-	{
-		std::unique_ptr<TransformInfo> info(reinterpret_cast<TransformInfo*>(Context));
-		DownSampleAndConvertImage(*info);
-	}
-
-	if (SUCCEEDED(hr))
-	{
-		CoUninitialize();
-	}
 }
 
 /// <summary>Down samples and converts an image to the pixel format with the least possible

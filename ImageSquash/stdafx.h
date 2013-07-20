@@ -41,6 +41,7 @@
 #include <atlbase.h>
 #include <Shlwapi.h>
 #include <cmath>
+#include <ppl.h>
 #include <strsafe.h>
 #include "banned.h"
 
