@@ -23,6 +23,7 @@
 #define MMNOSOUND
 #define MMNODRV
 #define STRICT
+#define USE_STRICT_CONST
 #define STRSAFE_USE_SECURE_CRT 1
 #define NO_SHLWAPI_STRFCNS 1
 #define NO_SHLWAPI_REG 1
@@ -34,6 +35,7 @@
 #include <Windows.h>
 #include <Icm.h>
 #include <wincodec.h>
+#include <array>
 #include <new>
 #include <vector>
 #include <memory>
@@ -50,7 +52,7 @@ template <class T> __forceinline static void SafeRelease(T **ppT)
     if (*ppT)
     {
         (*ppT)->Release();
-        *ppT = NULL;
+        *ppT = nullptr;
     }
 }
 // TODO: reference additional headers your program requires here

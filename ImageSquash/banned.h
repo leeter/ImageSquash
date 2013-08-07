@@ -1,26 +1,42 @@
 /***
 * banned.h - list of Microsoft Security Development Lifecycle (SDL) banned APIs
+* Copyright (c) Microsoft Corporation. All rights reserved.
+*
+* Permission is hereby granted, free of charge, to any person obtaining a copy of this software
+* and associated documentation files (the "Software"), to deal in the Software without 
+* restriction, including without limitation the rights to use, copy, modify, merge, publish, 
+* distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the
+* Software is furnished to do so, subject to the following conditions:
+*
+* The above copyright notice and this permission notice shall be included in all copies or 
+* substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, 
+* INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR 
+* PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE
+* FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
+* ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+* SOFTWARE.
 *
 * Purpose:
 *       This include file contains a list of banned APIs which should not be used in new code and 
 *       removed from legacy code over time.
 *
 * History
-* 01-Jan-2006 - mikehow - Initial Version
-* 22-Apr-2008 - mikehow	- Updated to SDL 4.1, commented out recommendations and added memcpy
-* 26-Jan-2009 - mikehow - Updated to SDL 5.0, made the list sane, added SDL compliance levels
-* 10-Feb-2009 - mikehow - Updated based on feedback from MS Office
-* 12-May-2009 - jpardue - Added wmemcpy
-* 08-Jul-2009 - mikehow - Fixed header #ifndef/#endif logic, made the SDL recommended compliance level name more obvious
-* 05-Nov-2009 - mikehow	- Added vsnprintf (ANSI version of _vsnprintf)
-* 01-Jan-2010 - mikehow - Added better strsafe integration, now the following works:
+* 01-Jan-2006 - mikehow  - Initial Version
+* 22-Apr-2008 - mikehow	 - Updated to SDL 4.1, commented out recommendations and added memcpy
+* 26-Jan-2009 - mikehow  - Updated to SDL 5.0, made the list sane, added SDL compliance levels
+* 10-Feb-2009 - mikehow  - Updated based on feedback from MS Office
+* 12-May-2009 - jpardue  - Added wmemcpy
+* 08-Jul-2009 - mikehow  - Fixed header #ifndef/#endif logic, made the SDL recommended compliance level name more obvious
+* 05-Nov-2009 - mikehow	 - Added vsnprintf (ANSI version of _vsnprintf)
+* 01-Jan-2010 - mikehow  - Added better strsafe integration, now the following works:
 *							#include "strsafe.h"
 *							#include "banned.h"
-* 04-Jun-2010 - mikehow - Small "#if" bug fix
-* 16-Jun-2011 - mikehow	- Added the two _CRT_SECURE_xxxxx macros
-* 07-Jul-2011 - mikehow - Bugfix when using recommended banned functions and StrSafe. Locally surpressed C4005 warnings
-*						   
-*
+* 04-Jun-2010 - mikehow  - Small "#if" bug fix
+* 16-Jun-2011 - mikehow	 - Added the two _CRT_SECURE_xxxxx macros
+* 07-Jul-2011 - mikehow  - Bugfix when using recommended banned functions and StrSafe. Locally surpressed C4005 warnings
+*	01-Feb-2013 - martinwo - Added license to header.					   
 ***/
 
 #ifndef _INC_BANNED
