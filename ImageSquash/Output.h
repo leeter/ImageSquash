@@ -17,7 +17,7 @@ struct OutputInfo
 	UINT sizeY;
 };
 
-STDMETHODIMP OutputImage(const OutputInfo & info, LPCWSTR outputPath, GUID outputFormat);
+STDMETHODIMP OutputImage(const OutputInfo & info, const std::wstring & outputPath, const GUID & outputFormat);
 	}
 }
 #endif // OUTPUT_H

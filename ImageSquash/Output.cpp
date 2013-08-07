@@ -2,7 +2,7 @@
 #include "Output.h"
 using namespace ImageSquash::Output;
 
-static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixelFormat)
+static BOOL inline IsPixelFormatRGBWithAlpha(const WICPixelFormatGUID& pixelFormat)
 {
 	return InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppBGRA) ||
 		InlineIsEqualGUID(pixelFormat, GUID_WICPixelFormat32bppPBGRA) ||
@@ -18,7 +18,7 @@ static BOOL STDMETHODCALLTYPE IsPixelFormatRGBWithAlpha(WICPixelFormatGUID pixel
 		IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppRGBA);
 }
 
-static WICPixelFormatGUID _stdcall GetOutputPixelFormat(UINT colorCount, BOOL hasAlpha, BOOL isBlackAndWhite, BOOL isGreyScale, BOOL & hasPalette)
+static WICPixelFormatGUID GetOutputPixelFormat(const UINT colorCount, const BOOL hasAlpha, const BOOL isBlackAndWhite, const BOOL isGreyScale, BOOL & hasPalette)
 {
 	if (isBlackAndWhite)
 	{
@@ -59,7 +59,7 @@ static WICPixelFormatGUID _stdcall GetOutputPixelFormat(UINT colorCount, BOOL ha
 	return GUID_WICPixelFormat32bppBGRA;
 }
 
-static HRESULT _stdcall HasAlpha(IWICBitmapSource * source, IWICImagingFactory * factory, BOOL & hasAlpha)
+static HRESULT HasAlpha(IWICBitmapSource * source, IWICImagingFactory * factory, BOOL & hasAlpha)
 {
 	// stuff that has to be cleaned up
 	CComPtr<IWICFormatConverter> converter = nullptr;
@@ -404,7 +404,7 @@ static STDMETHODIMP OutputPng(const OutputInfo & info, IWICStream * outputStream
 		VARIANT varValue;    
 		VariantInit(&varValue);
 		varValue.vt = VT_BOOL;
-		varValue.boolVal = 0;      
+		varValue.boolVal = VARIANT_FALSE;      
 		hr = propBag->Write(1, &option, &varValue); 
 		if (SUCCEEDED(hr))
 		{
@@ -466,12 +466,12 @@ STDMETHODIMP CreateStreamForPath(IWICImagingFactory * factory, CComPtr<IWICStrea
 	return hr;
 }
 
-STDMETHODIMP ImageSquash::Output::OutputImage(const OutputInfo & info, LPCWSTR outputPath, GUID outputFormat)
+STDMETHODIMP ImageSquash::Output::OutputImage(const OutputInfo & info, const std::wstring& outputPath, const GUID & outputFormat)
 {
 	CComPtr<IWICStream> outputStream = nullptr;
-	WCHAR outputPathBuffer[MAX_PATH];
+	WCHAR outputPathBuffer[MAX_PATH] = {0};
 
-	HRESULT hr = StringCchCopy(outputPathBuffer, MAX_PATH, outputPath);
+	HRESULT hr = ::StringCchCopy(outputPathBuffer, MAX_PATH, outputPath.c_str());
 	if (FAILED(hr))
 	{
 		return hr;
@@ -480,7 +480,7 @@ STDMETHODIMP ImageSquash::Output::OutputImage(const OutputInfo & info, LPCWSTR o
 	if(IsEqualGUID(outputFormat, GUID_ContainerFormatPng))
 	{
 
-		if(!PathRenameExtension(outputPathBuffer, L".png"))
+		if(!::PathRenameExtension(outputPathBuffer, L".png"))
 		{
 			// TODO: write out last error to stderr
 			hr = E_FAIL;
@@ -488,7 +488,7 @@ STDMETHODIMP ImageSquash::Output::OutputImage(const OutputInfo & info, LPCWSTR o
 
 		if (SUCCEEDED(hr))
 		{
-			hr = CreateStreamForPath(info.factory, outputStream, outputPathBuffer);
+			hr = CreateStreamForPath(info.factory, outputStream, const_cast<LPCWSTR>(outputPathBuffer));
 		}
 
 		if (SUCCEEDED(hr))
@@ -509,7 +509,7 @@ STDMETHODIMP ImageSquash::Output::OutputImage(const OutputInfo & info, LPCWSTR o
 
 		if (SUCCEEDED(hr))
 		{
-			hr = CreateStreamForPath(info.factory, outputStream, outputPathBuffer);
+			hr = CreateStreamForPath(info.factory, outputStream, const_cast<LPCWSTR>(outputPathBuffer));
 		}
 
 		if (SUCCEEDED(hr))
