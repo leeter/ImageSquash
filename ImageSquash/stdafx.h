@@ -31,8 +31,16 @@
 #define NO_SHLWAPI_HTTP 1
 #define NO_SHLWAPI_ISOS 1
 #define NO_SHLWAPI_GDI 1
+//#define BOOST_PROGRAM_OPTIONS_NO_LIB
+//#define BOOST_ALL_NO_LIB
 #include "targetver.h"
 #include <Windows.h>
+#pragma warning (push)
+#pragma warning (disable: 4005)
+#include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
+#include <iostream>
+#include <locale>
 #include <Icm.h>
 #include <wincodec.h>
 #include <array>
@@ -41,11 +49,11 @@
 #include <memory>
 #include <string>
 #include <atlbase.h>
-#include <Shlwapi.h>
 #include <cmath>
 #include <ppl.h>
 #include <strsafe.h>
 #include "banned.h"
+#pragma warning (pop)
 
 template <class T> __forceinline static void SafeRelease(T **ppT)
 {
