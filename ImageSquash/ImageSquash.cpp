@@ -11,7 +11,7 @@ namespace fs = ::boost::filesystem;
 #define E_WORKITEMQUEUEFAIL MAKE_HRESULT(SEVERITY_ERROR, 9, 1);
 
 static HRESULT DownSampleAndConvertImage(const TransformInfo&  info);
-static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICColorContext *** toCreate, const UINT count);
+static std::unique_ptr<IWICColorContext*[]> CreateColorContextArray(const ATL::CComPtr<IWICImagingFactory>& factory, const UINT count);
 static DWORD WriteOutLastError();
 static DWORD WriteStdError(LPCWSTR error, size_t length);
 static HRESULT inline QueueFileForDownSample(const WIN32_FIND_DATA &file, const std::wstring& inPath, const std::wstring& outPath, const std::wstring& profilePath, const double dpi, const ImageType type, std::vector<TransformInfo> & worklist);
@@ -38,66 +38,58 @@ int _tmain(int argc, _TCHAR* argv[])
 	size_t actuallength = 0;
 	ImageType outputType = PNG;
 	std::vector<TransformInfo> worklist;
-	//HANDLE consoleOut = GetStdHandle(STD_OUTPUT_HANDLE);
-	//HANDLE consoleIn = GetStdHandle(STD_INPUT_HANDLE);
-	HANDLE standardError = GetStdHandle(STD_ERROR_HANDLE);
+	
 	fs::wpath inputPath;
 	fs::wpath outputPath;
-	std::wstring profilePath;	
+	std::wstring profilePath;
 
 	HMODULE module = ::GetModuleHandle(nullptr);
-	if (module == NULL)
+	if (!module)
 	{
 		WriteOutLastError();
 		return -1;
 	}
-
-	//DWORD written = 0;
-	WCHAR buffer[256] = {0};
-	int read = LoadString(module, Logo, buffer, 256);
-	std::wcout << buffer << std::endl;
-
 	{
-
-	po::options_description desc("Options");
-	desc.add_options()
-		("help", "View full help")
-		("format,f", po::wvalue<ImageType>()->default_value(PNG, "png"), "output format")
-		("outPath,o", po::wvalue<std::wstring>()->required(), "output path")
-		("input,i", po::wvalue<std::wstring>()->required(), "input path")
-		("dpi", po::wvalue<double>(&dpi)->default_value(72.0, "72.0"), "output dpi");
-
-	po::variables_map vm;
-	po::wcommand_line_parser parser(argc, argv);
-	parser.options(desc);
-	po::store(parser.run(), vm);
-
-	if(vm.count("help"))
-	{
-		std::cout << desc << std::endl;
-		return -1;
+		//DWORD written = 0;
+		WCHAR buffer[256] = {0};
+		int read = ::LoadString(module, Logo, buffer, 256);
+		std::wcout << buffer << std::endl;
 	}
-	/*if(argc < 2)
 	{
-		read = ::LoadString(module, Error, &buffer[0], 256);
-		::WriteConsole(consoleOut, &buffer[0], read, &written, nullptr);
-		return -1;
-	}*/
 
-	if(vm.count("input"))
-	{
-		inputPath = vm["input"].as<std::wstring>();
-	}
+		po::options_description desc("Options");
+		desc.add_options()
+			("help,?", "View full help")
+			("format,f", po::wvalue<ImageType>()->default_value(PNG, "png"), "output format")
+			("outPath,o", po::wvalue<std::wstring>()->required(), "output path")
+			("input,i", po::wvalue<std::wstring>()->required(), "input path")
+			("dpi", po::wvalue<double>(&dpi)->default_value(72.0, "72.0"), "output dpi");
 
-	if(vm.count("outPath"))
-	{
-		outputPath = vm["outPath"].as<std::wstring>();
-	}
+		po::variables_map vm;
+		po::wcommand_line_parser parser(argc, argv);
+		parser.options(desc);
+		po::store(parser.run(), vm);
 
-	if(vm.count("format"))
-	{
-		outputType = vm["format"].as<ImageType>();
-	}
+		if(vm.count("help"))
+		{
+			std::cout << desc << std::endl;
+			return -1;
+		}
+
+		if(vm.count("input"))
+		{
+			inputPath = vm["input"].as<std::wstring>();
+		}
+
+		if(vm.count("outPath"))
+		{
+			outputPath = vm["outPath"].as<std::wstring>();
+		}
+
+		if(vm.count("format"))
+		{
+			outputType = vm["format"].as<ImageType>();
+		}
 	}
 	/**************************************************************************
 	 * Get the color directory once
@@ -114,43 +106,43 @@ int _tmain(int argc, _TCHAR* argv[])
 			WriteOutLastError();
 			hr = E_FAIL;
 		}
-		::GetColorDirectory(NULL, temp , &bufferSize);
+		::GetColorDirectory(nullptr, temp , &bufferSize);
 		profilePath = std::wstring(temp);
 	}
 
 	{
-	// all of this is is unnecessary in C++11 as we would have the <filesystem> header
-	WIN32_FIND_DATA file = {0};
-	WIN32_FIND_DATA outFile = {0};
-	HANDLE searchHandle = ::FindFirstFile(inputPath.c_str(), &file);
-	HANDLE outSearchHandle = ::FindFirstFileEx(outputPath.c_str(), FindExInfoBasic, &outFile, FindExSearchNameMatch, nullptr, NULL);
-	if(file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY && outFile.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-	{
-		fs::wpath inPathBase = fs::canonical(inputPath.remove_filename());
-		fs::wpath outPathBase = fs::canonical(outputPath.remove_filename());
-
-		while(::FindNextFile(searchHandle, &file))
+		// all of this is is unnecessary in C++11 as we would have the <filesystem> header
+		WIN32_FIND_DATA file = {0};
+		WIN32_FIND_DATA outFile = {0};
+		HANDLE searchHandle = ::FindFirstFile(inputPath.c_str(), &file);
+		HANDLE outSearchHandle = ::FindFirstFileEx(outputPath.c_str(), FindExInfoBasic, &outFile, FindExSearchNameMatch, nullptr, NULL);
+		if(file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY && outFile.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
 		{
-			fs::wpath inPathBuffer(inPathBase);
-			inPathBuffer /= file.cFileName;
+			fs::wpath inPathBase = fs::canonical(inputPath.remove_filename());
+			fs::wpath outPathBase = fs::canonical(outputPath.remove_filename());
 
-			fs::wpath outPathBuffer(outPathBase);
-			outPathBuffer /= file.cFileName;
-			
-			hr = QueueFileForDownSample(file, inPathBuffer.wstring(), outPathBuffer.wstring(), profilePath, dpi, outputType, worklist);
-			if(!SUCCEEDED(hr))
+			while(::FindNextFile(searchHandle, &file))
 			{
-				break;
+				fs::wpath inPathBuffer(inPathBase);
+				inPathBuffer /= file.cFileName;
+
+				fs::wpath outPathBuffer(outPathBase);
+				outPathBuffer /= file.cFileName;
+
+				hr = QueueFileForDownSample(file, inPathBuffer.wstring(), outPathBuffer.wstring(), profilePath, dpi, outputType, worklist);
+				if(!SUCCEEDED(hr))
+				{
+					break;
+				}
 			}
 		}
-	}
-	else
-	{
-		hr = QueueFileForDownSample(file, inputPath.wstring(), outputPath.wstring(), profilePath, dpi, outputType, worklist);
-	}
+		else
+		{
+			hr = QueueFileForDownSample(file, inputPath.wstring(), outputPath.wstring(), profilePath, dpi, outputType, worklist);
+		}
 
-	::FindClose(searchHandle);
-	::FindClose(outSearchHandle);
+		::FindClose(searchHandle);
+		::FindClose(outSearchHandle);
 	}
 
 	Concurrency::parallel_for_each(worklist.begin(), worklist.end(),
@@ -191,20 +183,20 @@ static HRESULT inline QueueFileForDownSample(const WIN32_FIND_DATA &file, const 
 static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 {
 	// stuff that has to be cleaned up
-	CComPtr<IWICImagingFactory> pFactory = nullptr;
-	CComPtr<IWICBitmapDecoder> pDecoder = nullptr; 
-	CComPtr<IWICStream> pStream = nullptr;
-	CComPtr<IPropertyBag2> pPropBag = nullptr;
-	CComPtr<IWICBitmapFrameDecode> pIDecoderFrame  = nullptr;
-	CComPtr<IWICBitmapScaler> pScaler = nullptr;
-	CComPtr<IWICColorTransform>  colorTransform = nullptr;
+	ATL::CComPtr<IWICImagingFactory> pFactory = nullptr;
+	ATL::CComPtr<IWICBitmapDecoder> pDecoder = nullptr; 
+	ATL::CComPtr<IWICStream> pStream = nullptr;
+	ATL::CComPtr<IPropertyBag2> pPropBag = nullptr;
+	ATL::CComPtr<IWICBitmapFrameDecode> pIDecoderFrame  = nullptr;
+	ATL::CComPtr<IWICBitmapScaler> pScaler = nullptr;
+	ATL::CComPtr<IWICColorTransform>  colorTransform = nullptr;
 	// annoying but I haven't found a way to get around this problem
 	// unfortunately both a vector and an array of CComPtr create problems
-	IWICColorContext ** inputContexts = nullptr;	
-	IWICColorContext ** outputContexts = nullptr;
+	std::unique_ptr<IWICColorContext*[]> inputContexts = nullptr;	
+	std::unique_ptr<IWICColorContext*[]> outputContexts = nullptr;
 
 	//stuff that doesn't
-	IWICBitmapSource * toOutput = nullptr;
+	ATL::CComPtr<IWICBitmapSource> toOutput = nullptr;
 	
 	double originalDpiX = 0.0, originalDpiY = 0.0;
 	UINT sizeX = 0, sizeY = 0, colorCount = 0, finalCount = 0 ,actualContexts = 0;
@@ -268,12 +260,12 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 	{
 		// if we don't have any contexts but we're CMYK we need to have a profile anyway
 		UINT contextsToCreate = !actualContexts && isCMYK ? 1 : actualContexts;
-		hr = CreateColorContextArray(pFactory, &inputContexts, contextsToCreate);
+		inputContexts = CreateColorContextArray(pFactory, contextsToCreate);
 	}	
 
 	if (SUCCEEDED(hr) && actualContexts > 0)
 	{		
-		hr= pIDecoderFrame->GetColorContexts(actualContexts, inputContexts, &finalCount);
+		hr= pIDecoderFrame->GetColorContexts(actualContexts, inputContexts.get(), &finalCount);
 	}
 
 
@@ -292,7 +284,7 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 
 	if (SUCCEEDED(hr))
 	{
-		hr = CreateColorContextArray(pFactory, &outputContexts, 1);
+		outputContexts = CreateColorContextArray(pFactory, 1);
 	}
 
 	if(SUCCEEDED(hr))
@@ -335,8 +327,8 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 	UINT newSizeX = sizeX, newSizeY = sizeY;
 	if (SUCCEEDED(hr) && pScaler)
 	{
-		newSizeX = (UINT)ceil(((double)sizeX * info.Dpi()) / originalDpiX);
-		newSizeY = (UINT)ceil(((double)sizeY * info.Dpi()) / originalDpiY);
+		newSizeX = static_cast<UINT>(std::ceil((static_cast<double>(sizeX) * info.Dpi()) / originalDpiX));
+		newSizeY = static_cast<UINT>(std::ceil((static_cast<double>(sizeY) * info.Dpi()) / originalDpiY));
 		hr = pScaler->Initialize(toOutput, newSizeX, newSizeY, WICBitmapInterpolationModeFant);
 	}
 
@@ -348,8 +340,14 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 
 	if(SUCCEEDED(hr))
 	{
-		ImageSquash::Output::OutputInfo outputInfo = { pFactory, toOutput, info.Dpi(), newSizeX, newSizeY};
-		hr = OutputImage(outputInfo, info.OutputPath(), GUID_ContainerFormatPng);
+		std::unique_ptr<ImageSquash::Output::outputImage> output = 
+			ImageSquash::Output::outputImage::CreateOutputImage(
+			newSizeX,
+			newSizeY,
+			info.type(),
+			pFactory,
+			info.Dpi());
+		output->write(toOutput, info.OutputPath());
 	}
 	
 	// cleanup factory
@@ -358,16 +356,10 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 		SafeRelease(&inputContexts[i]);
 	}
 
-	if (inputContexts)
-	{
-		delete [] inputContexts;
-	}
-
 	// there should never be more than one output context
 	if(outputContexts)
 	{
 		SafeRelease(&outputContexts[0]);
-		delete [] outputContexts;
 	}
 
 	return hr;
@@ -404,18 +396,15 @@ static DWORD WriteStdError(LPCWSTR error, size_t length)
 	return 0;
 }
 
-
-
-
-
-static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICColorContext *** toCreate, const UINT count)
+/// <summary> Creates a <see cref="IWICColorContext" /> array of pointers </summary>
+static std::unique_ptr<IWICColorContext*[]> CreateColorContextArray(const ATL::CComPtr<IWICImagingFactory>& factory, const UINT count)
 {
 	HRESULT hr = S_OK;
-	*toCreate = new (std::nothrow) IWICColorContext*[count];
-	if (*toCreate == nullptr)
+	std::unique_ptr<IWICColorContext*[]> toCreate(new IWICColorContext*[count]);
+	if (toCreate == nullptr)
 	{
 		hr = E_OUTOFMEMORY;
-		return hr;
+		return toCreate;
 	}
 
 	if (SUCCEEDED(hr))
@@ -424,10 +413,10 @@ static STDMETHODIMP CreateColorContextArray(IWICImagingFactory * factory, IWICCo
 		{
 			if (SUCCEEDED(hr))
 			{
-				hr = factory->CreateColorContext(&(*toCreate)[i]);
+				hr = factory->CreateColorContext(&(toCreate)[i]);
 			}
 		}
 	}
-	return hr;
+	return toCreate;
 }
 

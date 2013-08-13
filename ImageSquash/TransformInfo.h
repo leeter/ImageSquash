@@ -1,4 +1,9 @@
-#pragma once
+#ifndef TRANSFORM_H
+#define TRANSFORM_H
+
+#	if defined(_MSC_VER)
+#		pragma once
+#endif
 
 typedef enum
 {
@@ -44,4 +49,6 @@ private:
 	double dpi;
 	ImageType imageType;
 };
+
+#endif
 
