@@ -2,10 +2,10 @@
 #include "Output.h"
 
 namespace fs = ::boost::filesystem;
-
+namespace wrl = ::Microsoft::WRL;
 using namespace ImageSquash::Output;
 
-outputImage::outputImage(const UINT sizeX, const UINT sizeY, const ATL::CComPtr<IWICImagingFactory> factory, const double dpi)
+outputImage::outputImage(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory> factory, const double dpi)
 	:factory(factory), sizeX(sizeX), sizeY(sizeY), dpi(dpi)
 {
 }
@@ -13,51 +13,43 @@ outputImage::outputImage(const UINT sizeX, const UINT sizeY, const ATL::CComPtr<
 outputImage::~outputImage()
 {}
 
-const ATL::CComPtr<IWICStream> outputImage::createStreamForPath(const std::wstring& path)
+wrl::ComPtr<IWICStream> outputImage::createStreamForPath(const std::wstring& path)
 {
-	ATL::CComPtr<IWICStream> stream = nullptr;
+	wrl::ComPtr<IWICStream> stream;
 	
-	HRESULT hr = this->factory->CreateStream(&stream);
-	if(SUCCEEDED(hr))
-	{
-		hr = stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE);
-	}
-
-	if(FAILED(hr))
-	{
-		throw _com_error(hr);
-	}
+	_com_util::CheckError( this->factory->CreateStream(&stream));
+	_com_util::CheckError(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE));
 
 	return stream;
 }
-
+namespace {
 class outputJpeg: public outputImage
 {
 public:
 #if __cplusplus > 199711L
 	using outputImage::outputImage;
 #else
-	outputJpeg(const UINT sizeX, const UINT sizeY, const ATL::CComPtr<IWICImagingFactory> factory, const double dpi)
+	outputJpeg(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory> factory, const double dpi)
 		:outputImage(sizeX, sizeY, factory, dpi)
 	{
 	}
 #endif
 	~outputJpeg(){}
 
-	void write(const ATL::CComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
+	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
 	{
-		fs::wpath outputPathBuffer(outputPath);
+		fs::path outputPathBuffer(outputPath);
 		outputPathBuffer.replace_extension(L".jpg");
 		
-		ATL::CComPtr<IWICPalette> palette = nullptr;
-		ATL::CComPtr<IWICFormatConverter> converter = nullptr;
-		ATL::CComPtr<IWICBitmapEncoder> encoder = nullptr;
-		ATL::CComPtr<IWICBitmapFrameEncode> encoderFrame = nullptr;
-		ATL::CComPtr<IPropertyBag2> propBag = nullptr;
+		wrl::ComPtr<IWICPalette> palette;
+		wrl::ComPtr<IWICFormatConverter> converter;
+		wrl::ComPtr<IWICBitmapEncoder> encoder;
+		wrl::ComPtr<IWICBitmapFrameEncode> encoderFrame;
+		wrl::ComPtr<IPropertyBag2> propBag;
 		
-		ATL::CComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
+		wrl::ComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
 
-		ATL::CComPtr<IWICBitmapSource> forOutput = source;
+		wrl::ComPtr<IWICBitmapSource> forOutput = source;
 
 		BOOL isGreyScale = FALSE;
 		WICPixelFormatGUID inputFormat = { 0 };
@@ -73,7 +65,7 @@ public:
 
 			if (SUCCEEDED(hr))
 			{
-				hr = palette->InitializeFromBitmap(forOutput, 256U, FALSE);
+				hr = palette->InitializeFromBitmap(forOutput.Get(), 256U, FALSE);
 			}			
 
 			if (SUCCEEDED(hr))
@@ -96,7 +88,7 @@ public:
 				}
 			}
 
-			palette.Release();
+			palette.Reset();
 		}
 		// if we need to convert the pixel format... we should do so
 		if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
@@ -107,10 +99,10 @@ public:
 		if (SUCCEEDED(hr) && converter)
 		{
 			converter->Initialize(
-				forOutput,
+				forOutput.Get(),
 				outputFormat,
 				WICBitmapDitherTypeNone,
-				palette,
+				palette.Get(),
 				0.0F,
 				WICBitmapPaletteTypeCustom
 				);
@@ -128,7 +120,7 @@ public:
 
 		if (SUCCEEDED(hr))
 		{
-			hr = encoder->Initialize(outputStream, WICBitmapEncoderNoCache);
+			hr = encoder->Initialize(outputStream.Get(), WICBitmapEncoderNoCache);
 		}
 		if (SUCCEEDED(hr))
 		{
@@ -141,14 +133,11 @@ public:
 		{        
 			PROPBAG2 option = { 0 };
 			option.pstrName = L"ImageQuality";
-			VARIANT varValue;    
-			VariantInit(&varValue);
-			varValue.vt = VT_R4;
-			varValue.fltVal = 0.8f;      
+			_variant_t varValue(0.08f);     
 			hr = propBag->Write(1, &option, &varValue); 
 			if (SUCCEEDED(hr))
 			{
-				hr = encoderFrame->Initialize(propBag);
+				hr = encoderFrame->Initialize(propBag.Get());
 			}
 		}	
 
@@ -179,7 +168,7 @@ public:
 
 		if (SUCCEEDED(hr))
 		{
-			hr = encoderFrame->WriteSource(forOutput, nullptr);
+			hr = encoderFrame->WriteSource(forOutput.Get(), nullptr);
 		}	
 
 		if (SUCCEEDED(hr))
@@ -205,28 +194,28 @@ public:
 #if __cplusplus > 199711L
 	using outputImage::outputImage;
 #else
-	outputPng(const UINT sizeX, const UINT sizeY, const ATL::CComPtr<IWICImagingFactory> factory, const double dpi)
+	outputPng(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory> factory, const double dpi)
 		:outputImage(sizeX, sizeY, factory, dpi)
 	{
 	}
 #endif
 	~outputPng(){}
 
-	void write(const ATL::CComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
+	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
 	{
-		fs::wpath outputPathBuffer(outputPath);
+		fs::path outputPathBuffer(outputPath);
 		outputPathBuffer.replace_extension(L".png");
 
-		ATL::CComPtr<IWICPalette> palette = nullptr;
-		ATL::CComPtr<IWICFormatConverter> converter = nullptr;
-		ATL::CComPtr<IWICBitmapEncoder> encoder = nullptr;
-		ATL::CComPtr<IWICBitmapFrameEncode> encoderFrame = nullptr;
-		ATL::CComPtr<IPropertyBag2> propBag = nullptr;
+		wrl::ComPtr<IWICPalette> palette;
+		wrl::ComPtr<IWICFormatConverter> converter;
+		wrl::ComPtr<IWICBitmapEncoder> encoder;
+		wrl::ComPtr<IWICBitmapFrameEncode> encoderFrame;
+		wrl::ComPtr<IPropertyBag2> propBag;
 
-		ATL::CComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
+		wrl::ComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
 
 
-		ATL::CComPtr<IWICBitmapSource> forOutput = source;
+		wrl::ComPtr<IWICBitmapSource> forOutput = source;
 
 		BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE;
 		WICPixelFormatGUID inputFormat = { 0 };
@@ -234,132 +223,80 @@ public:
 		WICPixelFormatGUID selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
 		UINT colorCount = 0;
 
-		HRESULT hr = forOutput->GetPixelFormat(&inputFormat);
+		_com_util::CheckError(forOutput->GetPixelFormat(&inputFormat));
 
-		if (SUCCEEDED(hr))
+		if (!IsEqualGUID(inputFormat, GUID_WICPixelFormatBlackWhite))
 		{
-			if (!IsEqualGUID(inputFormat, GUID_WICPixelFormatBlackWhite))
+			_com_util::CheckError(this->Factory()->CreatePalette(&palette));
+
+			hasAlpha = this->HasAlpha(forOutput.Get());
+
+			_com_util::CheckError(palette->InitializeFromBitmap(forOutput.Get(), 256U, hasAlpha));		
+
+			_com_util::CheckError(palette->GetColorCount(&colorCount));
+			_com_util::CheckError(palette->IsBlackWhite(&isBlackAndWhite));
+
+			_com_util::CheckError(palette->IsGrayscale(&isGreyScale));
+
+			outputFormat = selectedOutputFormat = this->GetOutputPixelFormat(
+				colorCount,
+				hasAlpha,
+				isBlackAndWhite,
+				isGreyScale,
+				hasPalette
+				);
+
+			if (!hasPalette)
 			{
-				hr = this->Factory()->CreatePalette(&palette);
-
-				if (SUCCEEDED(hr))
-				{
-					hasAlpha = this->HasAlpha(forOutput);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					hr = palette->InitializeFromBitmap(forOutput, 256U, hasAlpha);
-				}			
-
-				if (SUCCEEDED(hr))
-				{
-					hr = palette->GetColorCount(&colorCount);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					hr = palette->IsBlackWhite(&isBlackAndWhite);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					hr = palette->IsGrayscale(&isGreyScale);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					outputFormat = selectedOutputFormat = this->GetOutputPixelFormat(
-						colorCount,
-						hasAlpha,
-						isBlackAndWhite,
-						isGreyScale,
-						hasPalette
-						);
-
-					if (!hasPalette)
-					{
-						palette.Release();
-					}
-				}
+				palette.Reset();
 			}
-			else
-			{
-				outputFormat = selectedOutputFormat = inputFormat;
-			}
+		}
+		else
+		{
+			outputFormat = selectedOutputFormat = inputFormat;
 		}
 		// if we need to convert the pixel format... we should do so
-		if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
+		if (!IsEqualGUID(inputFormat, outputFormat))
 		{		
-			hr = this->Factory()->CreateFormatConverter(&converter);
+			_com_util::CheckError(this->Factory()->CreateFormatConverter(&converter));
 		}
 
-		if (SUCCEEDED(hr) && converter)
+		if (converter)
 		{
-			converter->Initialize(
-				forOutput,
+			_com_util::CheckError(converter->Initialize(
+				forOutput.Get(),
 				outputFormat,
 				WICBitmapDitherTypeNone,
-				palette,
+				palette.Get(),
 				0.0F,
 				WICBitmapPaletteTypeCustom
-				);
-		}
-
-		if (SUCCEEDED(hr) && converter)
-		{
+				));
 			forOutput = converter;
 		}
 
-		if (SUCCEEDED(hr))
-		{
-			hr = this->Factory()->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder);	
-		}
+		_com_util::CheckError(this->Factory()->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder));
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoder->Initialize(outputStream, WICBitmapEncoderNoCache);
-		}
-		if (SUCCEEDED(hr))
-		{
-			hr = encoder->CreateNewFrame(&encoderFrame, &propBag);
-		}
+		_com_util::CheckError(encoder->Initialize(outputStream.Get(), WICBitmapEncoderNoCache));
+
+		_com_util::CheckError(encoder->CreateNewFrame(&encoderFrame, &propBag));
 
 		// this doesn't actually do anything at the moment, but we should keep it around as a sample of
 		// how to do it in the future
-		if (SUCCEEDED(hr))
-		{        
-			PROPBAG2 option = { 0 };
-			option.pstrName = L"InterlaceOption";
-			VARIANT varValue;    
-			VariantInit(&varValue);
-			varValue.vt = VT_BOOL;
-			varValue.boolVal = VARIANT_FALSE;      
-			hr = propBag->Write(1, &option, &varValue); 
-			if (SUCCEEDED(hr))
-			{
-				hr = encoderFrame->Initialize(propBag);
-			}
-		}	
+		PROPBAG2 option = { 0 };
+		option.pstrName = L"InterlaceOption";
+		_variant_t varValue(false);     
+		_com_util::CheckError(propBag->Write(1, &option, &varValue));
+		_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->SetResolution(this->Dpi(), this->Dpi());
-		}
+		_com_util::CheckError(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->SetSize(this->SizeX(), this->SizeY());
-		}
+		_com_util::CheckError(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->SetPixelFormat(&outputFormat);
-		}
+		_com_util::CheckError(encoderFrame->SetPixelFormat(&outputFormat));
 
-		if (SUCCEEDED(hr))
+		if (!IsEqualGUID(outputFormat, selectedOutputFormat))
 		{
-			hr = IsEqualGUID(outputFormat, selectedOutputFormat) ? S_OK : E_FAIL;
+			throw _com_error(E_FAIL);
 		}
 		// disabled as this was adding 4k to the image
 		/*if (SUCCEEDED(hr))
@@ -367,38 +304,23 @@ public:
 		hr = pOutputFrame->SetColorContexts(1, outputContexts);
 		}*/
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->WriteSource(forOutput, nullptr);
-		}	
+		_com_util::CheckError(encoderFrame->WriteSource(forOutput.Get(), nullptr));
+		
+		_com_util::CheckError(encoderFrame->Commit());
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->Commit();
-		}
-
-		if (SUCCEEDED(hr))
-		{
-			hr = encoder->Commit();
-		}
-
-		if(FAILED(hr))
-		{
-			throw _com_error(hr);
-		}
+		_com_util::CheckError(encoder->Commit());
 	}
 
-	bool HasAlpha(const ATL::CComPtr<IWICBitmapSource> & source)
+	bool HasAlpha(const wrl::ComPtr<IWICBitmapSource> & source)
 	{
 		// stuff that has to be cleaned up
-		ATL::CComPtr<IWICFormatConverter> converter = nullptr;
-		ATL::CComPtr<IWICBitmap> bitmap = nullptr;
-		ATL::CComPtr<IWICBitmapLock> lock = nullptr;
+		wrl::ComPtr<IWICFormatConverter> converter;
+		wrl::ComPtr<IWICBitmap> bitmap;
+		wrl::ComPtr<IWICBitmapLock> lock;
 
 		// stuff that doesn't
-		WICInProcPointer buffer = nullptr;
-		UINT * bitmapPixels = nullptr;
-		IWICBitmapSource * finalSource = nullptr;	
+		WICInProcPointer buffer;
+		wrl::ComPtr<IWICBitmapSource> finalSource;	
 		WICPixelFormatGUID inputFormat = { 0 };	
 		UINT sizeX = 0, sizeY = 0, bufferSize = 0;
 
@@ -418,7 +340,7 @@ public:
 					if (SUCCEEDED(hr))
 					{
 						hr = converter->Initialize(
-							source,
+							source.Get(),
 							GUID_WICPixelFormat32bppBGRA,
 							WICBitmapDitherTypeNone,
 							nullptr,
@@ -435,7 +357,7 @@ public:
 
 				if (SUCCEEDED(hr))
 				{
-					hr = this->Factory()->CreateBitmapFromSource(finalSource, WICBitmapCacheOnDemand, &bitmap);
+					hr = this->Factory()->CreateBitmapFromSource(finalSource.Get(), WICBitmapCacheOnDemand, &bitmap);
 				}
 
 				if (SUCCEEDED(hr))
@@ -532,12 +454,13 @@ public:
 		return GUID_WICPixelFormat32bppBGRA;
 	}
 };
+}
 
 std::unique_ptr<outputImage> outputImage::CreateOutputImage(
 		const UINT sizeX,
 		const UINT sizeY,
 		const ImageType outputType,
-		const ATL::CComPtr<IWICImagingFactory> factory,
+		const wrl::ComPtr<IWICImagingFactory> factory,
 		const double dpi)
 {
 	if(outputType == PNG)

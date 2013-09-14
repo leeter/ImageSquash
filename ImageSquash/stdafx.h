@@ -42,13 +42,10 @@
 #define NOCOMM          
 #define NOKANJI         
 #define NOHELP          
-#define NOPROFILER      
+#define NOPROFILER
+#define NOIME
 #define NODEFERWINDOWPOS
-#define NOMCX   
-#define _ATL_NO_DEFAULT_LIBS
-#define _ATL_NO_COM_SUPPORT
-#define _ATL_NO_COMMODULE
-#define _ATL_NO_AUTOMATIC_NAMESPACE
+#define NOMCX
 #define STRICT
 #define USE_STRICT_CONST
 #define STRSAFE_USE_SECURE_CRT 1
@@ -58,6 +55,8 @@
 #define NO_SHLWAPI_HTTP 1
 #define NO_SHLWAPI_ISOS 1
 #define NO_SHLWAPI_GDI 1
+#define BOOST_FILESYSTEM_NO_DEPRECATED
+//#define BOOST_NO_TEMPLATE_PARTIAL_SPECIALIZATION
 //#define BOOST_PROGRAM_OPTIONS_NO_LIB
 //#define BOOST_ALL_NO_LIB
 #include "targetver.h"
@@ -74,10 +73,10 @@
 #include <vector>
 #include <memory>
 #include <string>
-#include <atlbase.h>
-#include <cmath>
-#include <ppl.h>
 #include <comdef.h>
+#include <cmath>
+#include <wrl.h>
+#include <ppl.h>
 #include <strsafe.h>
 #include "banned.h"
 #pragma warning (pop)
