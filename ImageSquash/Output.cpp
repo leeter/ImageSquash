@@ -59,73 +59,48 @@ public:
 
 		HRESULT hr = forOutput->GetPixelFormat(&inputFormat);
 
-		if (SUCCEEDED(hr))
 		{
-			hr = this->Factory()->CreatePalette(&palette);
+			
+			_com_util::CheckError(this->Factory()->CreatePalette(&palette));
 
-			if (SUCCEEDED(hr))
-			{
-				hr = palette->InitializeFromBitmap(forOutput.Get(), 256U, FALSE);
-			}			
+			_com_util::CheckError(palette->InitializeFromBitmap(forOutput.Get(), 256U, FALSE));
 
-			if (SUCCEEDED(hr))
+			_com_util::CheckError(palette->GetColorCount(&colorCount));
+
+			_com_util::CheckError(palette->IsGrayscale(&isGreyScale));
+
+			// Jpeg only supports 8bit greyscale and 24bit BGR we shouldn't
+			// waste our time trying to get anything else
+			if(isGreyScale && colorCount <  256U)
 			{
-				hr = palette->GetColorCount(&colorCount);
+				selectedOutputFormat = outputFormat = GUID_WICPixelFormat8bppGray;
 			}
-
-			if (SUCCEEDED(hr))
-			{
-				hr = palette->IsGrayscale(&isGreyScale);
-			}
-
-			if (SUCCEEDED(hr))
-			{
-				// Jpeg only supports 8bit greyscale and 24bit BGR we shouldn't
-				// waste our time trying to get anything else
-				if(isGreyScale && colorCount <  256U)
-				{
-					outputFormat = GUID_WICPixelFormat8bppGray;
-				}
-			}
-
-			palette.Reset();
 		}
 		// if we need to convert the pixel format... we should do so
-		if (SUCCEEDED(hr) && !IsEqualGUID(inputFormat, outputFormat))
+		if (!IsEqualGUID(inputFormat, outputFormat))
 		{		
-			hr = this->Factory()->CreateFormatConverter(&converter);
+			_com_util::CheckError(this->Factory()->CreateFormatConverter(&converter));
 		}
 
-		if (SUCCEEDED(hr) && converter)
+		if (converter)
 		{
-			converter->Initialize(
-				forOutput.Get(),
-				outputFormat,
-				WICBitmapDitherTypeNone,
-				palette.Get(),
-				0.0F,
-				WICBitmapPaletteTypeCustom
-				);
-		}
-
-		if (SUCCEEDED(hr) && converter)
-		{
+			_com_util::CheckError(
+				converter->Initialize(
+					forOutput.Get(),
+					outputFormat,
+					WICBitmapDitherTypeNone,
+					palette.Get(),
+					0.0F,
+					WICBitmapPaletteTypeCustom
+					));
 			forOutput = converter;
 		}
 
-		if (SUCCEEDED(hr))
-		{
-			hr = this->Factory()->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, &encoder);	
-		}
+		_com_util::CheckError(this->Factory()->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, &encoder));
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoder->Initialize(outputStream.Get(), WICBitmapEncoderNoCache);
-		}
-		if (SUCCEEDED(hr))
-		{
-			hr = encoder->CreateNewFrame(&encoderFrame, &propBag);
-		}
+		_com_util::CheckError(encoder->Initialize(outputStream.Get(), WICBitmapEncoderNoCache));
+
+		_com_util::CheckError(encoder->CreateNewFrame(&encoderFrame, &propBag));
 
 		// this doesn't actually do anything at the moment, but we should keep it around as a sample of
 		// how to do it in the future
@@ -134,31 +109,18 @@ public:
 			PROPBAG2 option = { 0 };
 			option.pstrName = L"ImageQuality";
 			_variant_t varValue(0.08f);     
-			hr = propBag->Write(1, &option, &varValue); 
-			if (SUCCEEDED(hr))
-			{
-				hr = encoderFrame->Initialize(propBag.Get());
-			}
-		}	
-
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->SetResolution(this->Dpi(), this->Dpi());
+			_com_util::CheckError(propBag->Write(1, &option, &varValue));
+			_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));
 		}
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->SetSize(this->SizeX(), this->SizeY());
-		}
+		_com_util::CheckError(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
+		_com_util::CheckError(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
+		_com_util::CheckError(encoderFrame->SetPixelFormat(&outputFormat));
+		
 
-		if (SUCCEEDED(hr))
+		if (!IsEqualGUID(outputFormat, selectedOutputFormat))
 		{
-			hr = encoderFrame->SetPixelFormat(&outputFormat);
-		}
-
-		if (SUCCEEDED(hr))
-		{
-			hr = IsEqualGUID(outputFormat, selectedOutputFormat) ? S_OK : E_FAIL;
+			_com_issue_error(WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT);
 		}
 		// disabled as this was adding 4k to the image
 		/*if (SUCCEEDED(hr))
@@ -166,25 +128,9 @@ public:
 		hr = pOutputFrame->SetColorContexts(1, outputContexts);
 		}*/
 
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->WriteSource(forOutput.Get(), nullptr);
-		}	
-
-		if (SUCCEEDED(hr))
-		{
-			hr = encoderFrame->Commit();
-		}
-
-		if (SUCCEEDED(hr))
-		{
-			hr = encoder->Commit();
-		}
-
-		if(FAILED(hr))
-		{
-			throw _com_error(hr);
-		}
+		_com_util::CheckError(encoderFrame->WriteSource(forOutput.Get(), nullptr));
+		_com_util::CheckError(encoderFrame->Commit());
+		_com_util::CheckError(encoder->Commit());
 	}
 };
 
