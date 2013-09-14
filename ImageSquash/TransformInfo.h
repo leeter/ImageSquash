@@ -17,27 +17,27 @@ public:
 	TransformInfo(const ImageType type, const std::wstring& inPath, const std::wstring& outPath, const std::wstring & profilePath, const double dpi);
 	~TransformInfo(void);
 
-	const std::wstring& InputPath() const
+	std::wstring InputPath() const
 	{
 		return this->inputPath;
 	}
 
-	const std::wstring& OutputPath() const
+	std::wstring OutputPath() const
 	{
 		return this->outputPath;
 	}
 
-	const std::wstring& ProfilePath() const
+	std::wstring ProfilePath() const
 	{
 		return this->profilePath;
 	}
 
-	const double Dpi() const
+	double Dpi() const
 	{
 		return this->dpi;
 	}
 
-	const ImageType type() const
+	ImageType type() const
 	{
 		return this->imageType;
 	}

@@ -69,6 +69,9 @@
     <ClInclude Include="TransformInfo.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="CoInitializeWrapper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
