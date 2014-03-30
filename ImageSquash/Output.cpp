@@ -5,12 +5,12 @@ namespace fs = ::boost::filesystem;
 namespace wrl = ::Microsoft::WRL;
 using namespace ImageSquash::Output;
 
-outputImage::outputImage(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory> factory, const double dpi)
+outputImage::outputImage(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory>& factory, const double dpi)
 	:factory(factory), sizeX(sizeX), sizeY(sizeY), dpi(dpi)
 {
 }
 
-outputImage::~outputImage()
+outputImage::~outputImage() throw()
 {}
 
 wrl::ComPtr<IWICStream> outputImage::createStreamForPath(const std::wstring& path)
@@ -29,12 +29,12 @@ public:
 #if __cplusplus > 199711L
 	using outputImage::outputImage;
 #else
-	outputJpeg(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory> factory, const double dpi)
+	outputJpeg(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory>& factory, const double dpi)
 		:outputImage(sizeX, sizeY, factory, dpi)
 	{
 	}
 #endif
-	~outputJpeg(){}
+	//~outputJpeg()throw(){}
 
 	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
 	{
@@ -57,7 +57,7 @@ public:
 		WICPixelFormatGUID selectedOutputFormat = GUID_WICPixelFormat24bppBGR;
 		UINT colorCount = 0;
 
-		HRESULT hr = forOutput->GetPixelFormat(&inputFormat);
+		HRESULT hr = forOutput->GetPixelFormat(std::addressof(inputFormat));
 
 		{
 			
@@ -65,9 +65,9 @@ public:
 
 			_com_util::CheckError(palette->InitializeFromBitmap(forOutput.Get(), 256U, FALSE));
 
-			_com_util::CheckError(palette->GetColorCount(&colorCount));
+			_com_util::CheckError(palette->GetColorCount(std::addressof(colorCount)));
 
-			_com_util::CheckError(palette->IsGrayscale(&isGreyScale));
+			_com_util::CheckError(palette->IsGrayscale(std::addressof(isGreyScale)));
 
 			// Jpeg only supports 8bit greyscale and 24bit BGR we shouldn't
 			// waste our time trying to get anything else
@@ -109,13 +109,13 @@ public:
 			PROPBAG2 option = { 0 };
 			option.pstrName = L"ImageQuality";
 			_variant_t varValue(0.08f);     
-			_com_util::CheckError(propBag->Write(1, &option, &varValue));
+			_com_util::CheckError(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
 			_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));
 		}
 
 		_com_util::CheckError(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
 		_com_util::CheckError(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
-		_com_util::CheckError(encoderFrame->SetPixelFormat(&outputFormat));
+		_com_util::CheckError(encoderFrame->SetPixelFormat(std::addressof(outputFormat)));
 		
 
 		if (!IsEqualGUID(outputFormat, selectedOutputFormat))
@@ -140,12 +140,12 @@ public:
 #if __cplusplus > 199711L
 	using outputImage::outputImage;
 #else
-	outputPng(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory> factory, const double dpi)
+	outputPng(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory>& factory, const double dpi)
 		:outputImage(sizeX, sizeY, factory, dpi)
 	{
 	}
 #endif
-	~outputPng(){}
+	//~outputPng() throw(){}
 
 	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
 	{
@@ -163,13 +163,13 @@ public:
 
 		wrl::ComPtr<IWICBitmapSource> forOutput = source;
 
-		BOOL hasAlpha = FALSE, isGreyScale = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE;
+		BOOL hasAlpha = FALSE, isBlackAndWhite = FALSE, hasPalette = FALSE;
 		WICPixelFormatGUID inputFormat = { 0 };
 		WICPixelFormatGUID outputFormat = GUID_WICPixelFormat32bppBGRA;
 		WICPixelFormatGUID selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
 		UINT colorCount = 0;
 
-		_com_util::CheckError(forOutput->GetPixelFormat(&inputFormat));
+		_com_util::CheckError(forOutput->GetPixelFormat(std::addressof(inputFormat)));
 
 		if (!IsEqualGUID(inputFormat, GUID_WICPixelFormatBlackWhite))
 		{
@@ -179,16 +179,15 @@ public:
 
 			_com_util::CheckError(palette->InitializeFromBitmap(forOutput.Get(), 256U, hasAlpha));		
 
-			_com_util::CheckError(palette->GetColorCount(&colorCount));
-			_com_util::CheckError(palette->IsBlackWhite(&isBlackAndWhite));
+			_com_util::CheckError(palette->GetColorCount(std::addressof(colorCount)));
+			_com_util::CheckError(palette->IsBlackWhite(std::addressof(isBlackAndWhite)));
 
-			_com_util::CheckError(palette->IsGrayscale(&isGreyScale));
+			//_com_util::CheckError(palette->IsGrayscale(std::addressof(isGreyScale)));
 
 			outputFormat = selectedOutputFormat = this->GetOutputPixelFormat(
 				colorCount,
 				hasAlpha,
 				isBlackAndWhite,
-				isGreyScale,
 				hasPalette
 				);
 
@@ -231,14 +230,14 @@ public:
 		PROPBAG2 option = { 0 };
 		option.pstrName = L"InterlaceOption";
 		_variant_t varValue(false);     
-		_com_util::CheckError(propBag->Write(1, &option, &varValue));
+		_com_util::CheckError(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
 		_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));
 
 		_com_util::CheckError(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
 
 		_com_util::CheckError(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
 
-		_com_util::CheckError(encoderFrame->SetPixelFormat(&outputFormat));
+		_com_util::CheckError(encoderFrame->SetPixelFormat(std::addressof(outputFormat)));
 
 		if (!IsEqualGUID(outputFormat, selectedOutputFormat))
 		{
@@ -260,7 +259,6 @@ public:
 	bool HasAlpha(const wrl::ComPtr<IWICBitmapSource> & source)
 	{
 		// stuff that has to be cleaned up
-		wrl::ComPtr<IWICFormatConverter> converter;
 		wrl::ComPtr<IWICBitmap> bitmap;
 		wrl::ComPtr<IWICBitmapLock> lock;
 
@@ -270,73 +268,59 @@ public:
 		WICPixelFormatGUID inputFormat = { 0 };	
 		UINT sizeX = 0, sizeY = 0, bufferSize = 0;
 
-		HRESULT hr = source->GetPixelFormat(&inputFormat);	
+		_com_util::CheckError(source->GetPixelFormat(std::addressof(inputFormat)));
 		bool hasAlpha = false;
-		if (SUCCEEDED(hr))
+		if(!this->IsPixelFormatRGBWithAlpha(inputFormat))
+			return false;
+
+		if (IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppBGRA))
 		{
-			if(this->IsPixelFormatRGBWithAlpha(inputFormat))
+			finalSource = source;
+		}
+		else
+		{
+			wrl::ComPtr<IWICFormatConverter> converter;
+			_com_util::CheckError(this->Factory()->CreateFormatConverter(&converter));
+			_com_util::CheckError(
+				converter->Initialize(
+					source.Get(),
+					GUID_WICPixelFormat32bppBGRA,
+					WICBitmapDitherTypeNone,
+					nullptr,
+					0.0,
+					WICBitmapPaletteTypeCustom
+					));
+
+			finalSource = converter;			
+		}
+
+		_com_util::CheckError(
+			this->Factory()->CreateBitmapFromSource(
+			finalSource.Get(),
+			WICBitmapCacheOnDemand, &bitmap));
+		_com_util::CheckError(bitmap->GetSize(std::addressof(sizeX), std::addressof(sizeY)));
+
+		//if (SUCCEEDED(hr))
+		{
+			WICRect lockRectangle = { 0, 0, sizeX, sizeY};
+			_com_util::CheckError(
+				bitmap->Lock(std::addressof(lockRectangle), WICBitmapLockRead, &lock));
+		}
+
+		_com_util::CheckError(
+			lock->GetDataPointer(std::addressof(bufferSize), std::addressof(buffer)));
+
+		const std::uint32_t * imageBuffer = reinterpret_cast<const std::uint32_t *>(buffer);
+		// it's little endian, as such alpha will be stored in the
+		// pixel with the highest address if we're in BGRA format
+		UINT pixelCount = bufferSize / sizeof(std::uint32_t);
+		for (UINT i = 0; i < pixelCount; ++i)
+		{				
+			UINT pixel = imageBuffer[i];
+			if ((pixel & 0xFF000000U) != 0xFF000000U)
 			{
-				if (IsEqualGUID(inputFormat, GUID_WICPixelFormat32bppBGRA))
-				{
-					finalSource = source;
-				}
-				else
-				{
-					hr = this->Factory()->CreateFormatConverter(&converter);
-					if (SUCCEEDED(hr))
-					{
-						hr = converter->Initialize(
-							source.Get(),
-							GUID_WICPixelFormat32bppBGRA,
-							WICBitmapDitherTypeNone,
-							nullptr,
-							0.0,
-							WICBitmapPaletteTypeCustom
-							);
-					}
-
-					if (SUCCEEDED(hr))
-					{
-						finalSource = converter;
-					}				
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					hr = this->Factory()->CreateBitmapFromSource(finalSource.Get(), WICBitmapCacheOnDemand, &bitmap);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					hr = bitmap->GetSize(&sizeX, &sizeY);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					WICRect lockRectangle = { 0, 0, sizeX, sizeY};
-					hr = bitmap->Lock(&lockRectangle, WICBitmapLockRead, &lock);
-				}
-
-				if (SUCCEEDED(hr))
-				{
-					hr = lock->GetDataPointer(&bufferSize, &buffer);				
-				}
-
-				if(SUCCEEDED(hr))
-				{
-					// it's little endian, as such alpha will be stored in the
-					// pixel with the highest address if we're in BGRA format
-					size_t i = bufferSize - 1;
-					do
-					{					
-						if(buffer[i] != 0xFFU)
-						{
-							hasAlpha = TRUE;
-							break;
-						}
-						i -= 4;
-					}while(i > 3);
-				}
+				hasAlpha = true;
+				break;
 			}
 		}
 
@@ -359,7 +343,7 @@ public:
 			IsEqualGUID(pixelFormat, GUID_WICPixelFormat64bppRGBA);
 	}
 
-	const WICPixelFormatGUID GetOutputPixelFormat(const UINT colorCount, const BOOL hasAlpha, const BOOL isBlackAndWhite, const BOOL isGreyScale, BOOL & hasPalette)
+	const WICPixelFormatGUID GetOutputPixelFormat(const UINT colorCount, const BOOL hasAlpha, const BOOL isBlackAndWhite, BOOL & hasPalette)
 	{
 		if (isBlackAndWhite)
 		{
@@ -406,12 +390,12 @@ std::unique_ptr<outputImage> outputImage::CreateOutputImage(
 		const UINT sizeX,
 		const UINT sizeY,
 		const ImageType outputType,
-		const wrl::ComPtr<IWICImagingFactory> factory,
+		const wrl::ComPtr<IWICImagingFactory>& factory,
 		const double dpi)
 {
-	if(outputType == PNG)
+	if(outputType == ImageType::PNG)
 	{
-		return std::unique_ptr<outputImage>(new outputPng(sizeX, sizeY, factory, dpi));
+		return std::make_unique<outputPng>(sizeX, sizeY, factory, dpi);
 	}
-	return std::unique_ptr<outputImage>(new outputJpeg(sizeX, sizeY, factory, dpi));
+	return std::make_unique<outputJpeg>(sizeX, sizeY, factory, dpi);
 }
