@@ -5,17 +5,17 @@
 #		pragma once
 #endif
 
-typedef enum
+enum class ImageType
 {
 	PNG,
 	JPG
-} ImageType;
+};
 
 class TransformInfo
 {
 public:
 	TransformInfo(const ImageType type, const std::wstring& inPath, const std::wstring& outPath, const std::wstring & profilePath, const double dpi);
-	~TransformInfo(void);
+	// ~TransformInfo(void){};
 
 	std::wstring InputPath() const
 	{

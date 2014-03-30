@@ -73,20 +73,23 @@
 #include <vector>
 #include <memory>
 #include <string>
+#include <cstdint>
+#include <codecvt>
 #include <comdef.h>
 #include <cmath>
 #include <wrl.h>
 #include <ppl.h>
-#include <strsafe.h>
+#include <boost\scope_exit.hpp>
+//#include <strsafe.h>
 #include "banned.h"
 #pragma warning (pop)
 
-template <class T> __forceinline static void SafeRelease(T **ppT)
-{
-    if (*ppT)
-    {
-        (*ppT)->Release();
-        *ppT = nullptr;
-    }
-}
+//template <class T> __forceinline static void SafeRelease(T **ppT)
+//{
+//    if (*ppT)
+//    {
+//        (*ppT)->Release();
+//        *ppT = nullptr;
+//    }
+//}
 // TODO: reference additional headers your program requires here

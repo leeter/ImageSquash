@@ -21,4 +21,8 @@ public:
     {
         return _hr;
     }
+private:
+	CoInitializeWrapper(const CoInitializeWrapper&) = delete;
+	CoInitializeWrapper(const CoInitializeWrapper&&) = delete;
+	const CoInitializeWrapper& operator = (const CoInitializeWrapper&) = delete;
 };
