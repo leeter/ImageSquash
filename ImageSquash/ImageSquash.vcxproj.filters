@@ -49,6 +49,7 @@
     <None Include="testImages\Untitled.png">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="boost.props" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">

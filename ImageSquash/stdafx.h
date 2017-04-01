@@ -61,8 +61,6 @@
 //#define BOOST_ALL_NO_LIB
 #include "targetver.h"
 #include <Windows.h>
-#pragma warning (push)
-#pragma warning (disable: 4005)
 #include <boost/program_options.hpp>
 #include <boost/filesystem.hpp>
 #include <iostream>
@@ -71,6 +69,7 @@
 #include <wincodec.h>
 #include <new>
 #include <vector>
+#include <utility>
 #include <memory>
 #include <string>
 #include <cstdint>
@@ -79,10 +78,8 @@
 #include <cmath>
 #include <wrl.h>
 #include <ppl.h>
-#include <boost\scope_exit.hpp>
 //#include <strsafe.h>
 #include "banned.h"
-#pragma warning (pop)
 
 //template <class T> __forceinline static void SafeRelease(T **ppT)
 //{

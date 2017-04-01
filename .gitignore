@@ -1,0 +1,11 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/ImageSquash/v15
+/ImageSquash/Debug
+*.tlog
+*.cod
+/ImageSquash/x64
+/x64
+*.user

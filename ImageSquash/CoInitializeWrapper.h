@@ -10,14 +10,14 @@ public:
 		:_hr(::CoInitializeEx(nullptr, T))
     {
     }
-    ~CoInitializeWrapper()
+    ~CoInitializeWrapper() noexcept
     {
         if (SUCCEEDED(_hr))
         {
             CoUninitialize();
         }
     }
-    operator HRESULT() const
+    operator HRESULT() const noexcept
     {
         return _hr;
     }

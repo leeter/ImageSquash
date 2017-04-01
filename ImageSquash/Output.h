@@ -20,7 +20,7 @@ public:
 		const ImageType outputType,
 		const Microsoft::WRL::ComPtr<IWICImagingFactory>& factory,
 		const double dpi);
-	virtual ~outputImage(void) throw();
+	virtual ~outputImage(void) noexcept;
 
 public:
 	virtual void write(const Microsoft::WRL::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) = 0;
@@ -32,7 +32,7 @@ protected:
 		const Microsoft::WRL::ComPtr<IWICImagingFactory>& factory,
 		const double dpi);
 	Microsoft::WRL::ComPtr<IWICStream> createStreamForPath(const std::wstring& path);
-	Microsoft::WRL::ComPtr<IWICImagingFactory> Factory() const { return this->factory; }
+	IWICImagingFactory* Factory() const { return this->factory.Get(); }
 	UINT SizeX() const { return this->sizeX; }
 	UINT SizeY() const { return this->sizeY; }
 	double Dpi() const { return this->dpi; }

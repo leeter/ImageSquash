@@ -32,12 +32,12 @@ public:
 		return this->profilePath;
 	}
 
-	double Dpi() const
+	double Dpi() const noexcept
 	{
 		return this->dpi;
 	}
 
-	ImageType type() const
+	ImageType type() const noexcept
 	{
 		return this->imageType;
 	}
