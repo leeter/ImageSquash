@@ -9,3 +9,6 @@
 /ImageSquash/x64
 /x64
 *.user
+/.vs/ImageSquash/v17
+/.vs/ImageSquash/FileContentIndex
+/.vs

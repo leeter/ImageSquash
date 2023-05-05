@@ -4,6 +4,7 @@
 //
 
 #pragma once
+#pragma warning (disable : 4005)
 #define VC_EXTRALEAN
 #define WIN32_LEAN_AND_MEAN
 //#define NOGDICAPMASKS   
@@ -61,10 +62,7 @@
 //#define BOOST_ALL_NO_LIB
 #include "targetver.h"
 #include <Windows.h>
-#include <boost/program_options.hpp>
-#include <boost/filesystem.hpp>
 #include <iostream>
-#include <locale>
 #include <Icm.h>
 #include <wincodec.h>
 #include <new>
@@ -78,6 +76,7 @@
 #include <cmath>
 #include <wrl.h>
 #include <ppl.h>
+#include <filesystem>
 //#include <strsafe.h>
 #include "banned.h"
 

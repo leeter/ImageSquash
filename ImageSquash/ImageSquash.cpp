@@ -6,10 +6,9 @@
 #include "TransformInfo.h"
 #include "resource.h"
 #include "CoInitializeWrapper.h"
+#include <filesystem>
+#include <expected>
 
-
-namespace po = ::boost::program_options;
-namespace fs = ::boost::filesystem;
 namespace wrl = ::Microsoft::WRL;
 
 namespace{
@@ -103,7 +102,7 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 
 	if (!actualContexts && isCMYK)
 	{
-		fs::path finalPath(info.ProfilePath());
+		std::filesystem::path finalPath(info.ProfilePath());
 		finalPath /= L"RSWOP.icm";
 		_com_util::CheckError(inputContexts[0]->InitializeFromFilename(finalPath.wstring().c_str()));
 	}
@@ -118,7 +117,7 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 	_com_util::CheckError(pFactory->CreateColorContext(outputContext.GetAddressOf()));
 
 	{
-		fs::path finalPath(info.ProfilePath());
+		std::filesystem::path finalPath(info.ProfilePath());
 		finalPath /= L"sRGB Color Space Profile.icm";
 		_com_util::CheckError(outputContext->InitializeFromFilename(finalPath.c_str()));
 	}
@@ -194,7 +193,7 @@ static void WriteOutLastError()
 	std::wcerr<< outBuffer <<std::endl;
 }
 
-std::wstring getColorProfileDirectory()
+std::expected<std::wstring, DWORD> getColorProfileDirectory()
 {
 	
 	DWORD bufferSize = 0;
@@ -204,7 +203,7 @@ std::wstring getColorProfileDirectory()
 	if (bufferSize == 0 || bufferSize > (MAX_PATH * sizeof(WCHAR)))
 	{
 		WriteOutLastError();
-		throw std::exception("Buffer size mismatch for GetColorDirectory");
+		return std::unexpected(GetLastError());
 	}
 	WCHAR temp[MAX_PATH] = {};
 	::GetColorDirectoryW(nullptr, temp , std::addressof(bufferSize));
@@ -249,8 +248,8 @@ static std::wistream& operator>>(std::wistream& in, ImageType & image)
 		image = ImageType::PNG;
 	else if (token == L"jpg")
 		image = ImageType::JPG;
-	else 
-		throw po::validation_error(po::validation_error::invalid_option_value);
+	else
+		;//throw po::validation_error(po::validation_error::invalid_option_value);
 	return in;
 }
 
@@ -266,72 +265,74 @@ int wmain(int argc, wchar_t* argv[])
 	ImageType outputType = ImageType::PNG;
 	std::vector<TransformInfo> worklist;
 	
-	fs::path inputPath;
-	fs::path outputPath;
+	std::filesystem::path inputPath;
+	std::filesystem::path outputPath;
 
 	std::wcout << getStringResourceW(RS_Logo) << std::endl;
 	{
 
-		po::options_description desc("Options");
-		desc.add_options()
-			("help,?", "View full help")
-			("format,f", po::wvalue<ImageType>()->default_value(ImageType::PNG, "png"), getStringResourceA(IDS_OUTPUTFORMAT).c_str()) //"output format")
-			("outPath,o", po::wvalue<std::wstring>()->required(), getStringResourceA(IDS_OUTPUTPATH).c_str())
-			("input,i", po::wvalue<std::wstring>()->required(), getStringResourceA(IDS_INPUTPATH).c_str())
-			("dpi", po::wvalue<double>(std::addressof(dpi))->default_value(72.0, "72.0"), getStringResourceA(IDS_OUPUTDPI).c_str());
+		//po::options_description desc("Options");
+		//desc.add_options()
+		//	("help,?", "View full help")
+		//	("format,f", po::wvalue<ImageType>()->default_value(ImageType::PNG, "png"), getStringResourceA(IDS_OUTPUTFORMAT).c_str()) //"output format")
+		//	("outPath,o", po::wvalue<std::wstring>()->required(), getStringResourceA(IDS_OUTPUTPATH).c_str())
+		//	("input,i", po::wvalue<std::wstring>()->required(), getStringResourceA(IDS_INPUTPATH).c_str())
+		//	("dpi", po::wvalue<double>(std::addressof(dpi))->default_value(72.0, "72.0"), getStringResourceA(IDS_OUPUTDPI).c_str());
 
-		po::variables_map vm;
-		po::wcommand_line_parser parser(argc, argv);
-		parser.options(desc);
-		po::store(parser.run(), vm);
+		//po::variables_map vm;
+		//po::wcommand_line_parser parser(argc, argv);
+		//parser.options(desc);
+		//po::store(parser.run(), vm);
 
-		if(vm.count("help"))
-		{
-			std::cout << desc << std::endl;
-			return -1;
-		}
+		//if(vm.count("help"))
+		//{
+		//	std::cout << desc << std::endl;
+		//	return -1;
+		//}
 
-		if(vm.count("input"))
-		{
-			inputPath = vm["input"].as<std::wstring>();
-		}
-		
-		if(vm.count("outPath"))
-		{
-			outputPath = vm["outPath"].as<std::wstring>();
-		}
+		//if(vm.count("input"))
+		//{
+		//	inputPath = vm["input"].as<std::wstring>();
+		//}
+		//
+		//if(vm.count("outPath"))
+		//{
+		//	outputPath = vm["outPath"].as<std::wstring>();
+		//}
 
-		if(vm.count("format"))
-		{
-			outputType = vm["format"].as<ImageType>();
-		}
+		//if(vm.count("format"))
+		//{
+		//	outputType = vm["format"].as<ImageType>();
+		//}
 	}
 	/**************************************************************************
 	 * Get the color directory once
 	 */
-	auto profilePath = getColorProfileDirectory();
+	const auto profilePath = getColorProfileDirectory();
+	if (!profilePath) {
+		return -1;
+	}
 
-	if(fs::is_directory(inputPath) && fs::is_directory(outputPath))
+	if(std::filesystem::is_directory(inputPath) && std::filesystem::is_directory(outputPath))
 	{
-		fs::path inPathBase = fs::canonical(inputPath.remove_filename());
-		fs::path outPathBase = fs::canonical(outputPath.remove_filename());
-
-		fs::directory_iterator endItr;
+		std::filesystem::path inPathBase = std::filesystem::canonical(inputPath.remove_filename());
+		std::filesystem::path outPathBase = std::filesystem::canonical(outputPath.remove_filename());
 		
-		for(fs::directory_iterator inputItr(inputPath); inputItr != endItr; ++inputItr)
+		for(const auto & file_path : std::filesystem::directory_iterator(inputPath))
 		{
-			fs::path fileName = inputItr->path().filename();
-			fs::path inPathBuffer(inPathBase);
+			const auto fileName = file_path.path().filename();
+			std::filesystem::path inPathBuffer(inPathBase);
 			inPathBuffer /= fileName;
 
-			fs::path outPathBuffer(outPathBase);
+			std::filesystem::path outPathBuffer(outPathBase);
 			outPathBuffer /= fileName;
-			worklist.emplace_back(outputType, inPathBuffer.wstring(), outPathBuffer.wstring(), profilePath, dpi);
+
+			worklist.emplace_back(outputType, inPathBuffer.wstring(), outPathBuffer.wstring(), *profilePath, dpi);
 		}
 	}
 	else
 	{
-		worklist.emplace_back(outputType, inputPath.wstring(), outputPath.wstring(), profilePath, dpi);
+		worklist.emplace_back(outputType, inputPath.wstring(), outputPath.wstring(), *profilePath, dpi);
 	}
 
 	Concurrency::parallel_for_each(worklist.begin(), worklist.end(),

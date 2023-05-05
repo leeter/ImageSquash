@@ -1,7 +1,6 @@
 #include "stdafx.h"
 #include "Output.h"
 
-namespace fs = ::boost::filesystem;
 namespace wrl = ::Microsoft::WRL;
 using namespace ImageSquash::Output;
 
@@ -38,7 +37,7 @@ public:
 
 	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
 	{
-		fs::path outputPathBuffer(outputPath);
+		std::filesystem::path outputPathBuffer(outputPath);
 		outputPathBuffer.replace_extension(L".jpg");
 		
 		wrl::ComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
@@ -99,7 +98,8 @@ public:
 		if (SUCCEEDED(hr))
 		{        
 			PROPBAG2 option = { };
-			option.pstrName = L"ImageQuality";
+			wchar_t imageQualOpt[] = L"ImageQuality";
+			option.pstrName = imageQualOpt;
 			_variant_t varValue(0.08f);     
 			_com_util::CheckError(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
 			_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));
@@ -141,7 +141,7 @@ public:
 
 	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
 	{
-		fs::path outputPathBuffer(outputPath);
+		std::filesystem::path outputPathBuffer(outputPath);
 		outputPathBuffer.replace_extension(L".png");
 
 		wrl::ComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
@@ -212,7 +212,8 @@ public:
 		// this doesn't actually do anything at the moment, but we should keep it around as a sample of
 		// how to do it in the future
 		PROPBAG2 option = { };
-		option.pstrName = L"InterlaceOption";
+		wchar_t interlaceOpt[] = L"InterlaceOption";
+		option.pstrName = interlaceOpt;
 		_variant_t varValue(false);     
 		_com_util::CheckError(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
 		_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));

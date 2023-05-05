@@ -8,8 +8,7 @@
 #include "stdafx.h"
 #include "TransformInfo.h"
 
-namespace ImageSquash{
-	namespace Output{
+namespace ImageSquash::Output{
 
 class _declspec(novtable) outputImage
 {
@@ -20,17 +19,18 @@ public:
 		const ImageType outputType,
 		const Microsoft::WRL::ComPtr<IWICImagingFactory>& factory,
 		const double dpi);
-	virtual ~outputImage(void) noexcept;
-
-public:
-	virtual void write(const Microsoft::WRL::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) = 0;
-
-protected:
 	outputImage(
 		const UINT sizeX,
 		const UINT sizeY,
 		const Microsoft::WRL::ComPtr<IWICImagingFactory>& factory,
 		const double dpi);
+	virtual ~outputImage() noexcept;
+
+public:
+	virtual void write(const Microsoft::WRL::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) = 0;
+
+protected:
+	
 	Microsoft::WRL::ComPtr<IWICStream> createStreamForPath(const std::wstring& path);
 	IWICImagingFactory* Factory() const { return this->factory.Get(); }
 	UINT SizeX() const { return this->sizeX; }
@@ -43,6 +43,5 @@ private:
 	const UINT sizeY;
 	const double dpi;
 };
-	}
 }
 #endif // OUTPUT_H
