@@ -8,28 +8,27 @@
 #include "CoInitializeWrapper.h"
 #include <filesystem>
 #include <expected>
-
-namespace wrl = ::Microsoft::WRL;
+#include <span>
 
 namespace{
 
 /// <summary> Creates a <see cref="IWICColorContext" /> array of pointers </summary>
-static std::vector<wrl::ComPtr<IWICColorContext>> CreateColorContextArray(wrl::ComPtr<IWICImagingFactory> const &factory, const UINT count)
+static auto CreateColorContextArray(IWICImagingFactory *factory, const UINT count)
 {
-	std::vector<wrl::ComPtr<IWICColorContext>> toCreate(count);
+	std::vector<winrt::com_ptr<IWICColorContext>> toCreate(count);
 
-	for(UINT i = 0; i < count; ++i)
+	for(auto & newContext : toCreate)
 	{
-		_com_util::CheckError(factory->CreateColorContext(toCreate[i].GetAddressOf()));
+		winrt::check_hresult(factory->CreateColorContext(newContext.put()));
 	}
 	return toCreate;
 }
 
-static std::vector<IWICColorContext*> GetPointerVector(const  std::vector<wrl::ComPtr<IWICColorContext>> & toGet)
+static std::vector<IWICColorContext*> GetPointerVector(std::span<winrt::com_ptr<IWICColorContext>>  toGet)
 {
 	std::vector<IWICColorContext*> toReturn(toGet.size());
 	for(int i = 0; i < toGet.size(); ++i){
-		toReturn[i] = toGet[i].Get();
+		toReturn[i] = toGet[i].get();
 	}
 	return toReturn;
 }
@@ -43,57 +42,53 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 {
 	UINT sizeX = 0, sizeY = 0, finalCount = 0 ,actualContexts = 0;
 	WICPixelFormatGUID inputFormat = { };
-	wrl::ComPtr<IWICImagingFactory> pFactory;
-	HRESULT hr = ::CoCreateInstance(
+	auto pFactory = winrt::create_instance<IWICImagingFactory2>(CLSID_WICImagingFactory2);
+	/*HRESULT hr = ::CoCreateInstance(
 		CLSID_WICImagingFactory,
 		nullptr,
 		CLSCTX_INPROC_SERVER,
 		IID_PPV_ARGS(pFactory.GetAddressOf()));
 	if(FAILED(hr))
-		return hr;
+		return hr;*/
 
-	wrl::ComPtr<IWICStream> pStream;
-	_com_util::CheckError(pFactory->CreateStream(pStream.GetAddressOf()));
+	auto pStream = is::capture<IWICStream>(pFactory, &IWICImagingFactory2::CreateStream);
 
-	_com_util::CheckError(pStream->InitializeFromFilename(info.InputPath().c_str(), GENERIC_READ));
+	winrt::check_hresult(pStream->InitializeFromFilename(info.InputPath().c_str(), GENERIC_READ));
 
-	wrl::ComPtr<IWICBitmapDecoder> pDecoder;
 	// this will fail if the file isn't an image we can handle
-	hr = pFactory->CreateDecoderFromStream(pStream.Get(), nullptr, WICDecodeMetadataCacheOnLoad, pDecoder.GetAddressOf());
-	if(FAILED(hr))
-		return hr;
-	wrl::ComPtr<IWICBitmapFrameDecode> pIDecoderFrame;
-	_com_util::CheckError(pDecoder->GetFrame(0, pIDecoderFrame.GetAddressOf()));
+	winrt::com_ptr<IWICBitmapDecoder> pDecoder = is::capture<IWICBitmapDecoder>(pFactory, &IWICImagingFactory::CreateDecoderFromStream, pStream.get(), nullptr, WICDecodeMetadataCacheOnLoad);
+
+	auto pIDecoderFrame = is::capture<IWICBitmapFrameDecode>(pDecoder, &IWICBitmapDecoder::GetFrame, 0u);
 	
 
-	_com_util::CheckError(pIDecoderFrame->GetPixelFormat(std::addressof(inputFormat)));
+	winrt::check_hresult(pIDecoderFrame->GetPixelFormat(std::addressof(inputFormat)));
 
 	const auto isCMYK = GUID_WICPixelFormat32bppCMYK == inputFormat
 			 || GUID_WICPixelFormat40bppCMYKAlpha == inputFormat
 			 || GUID_WICPixelFormat64bppCMYK == inputFormat
 			 || GUID_WICPixelFormat80bppCMYKAlpha == inputFormat;
 
-	_com_util::CheckError(
+	winrt::check_hresult(
 		pIDecoderFrame->GetSize(
 			std::addressof(sizeX),
 			std::addressof(sizeY)));
 
 	// ------------------------- Color -------------------------------------------
 
-	wrl::ComPtr<IWICBitmapSource> toOutput = pIDecoderFrame;
-	_com_util::CheckError(pIDecoderFrame->GetColorContexts(0, nullptr, std::addressof(actualContexts)));
-	std::vector<wrl::ComPtr<IWICColorContext>> inputContexts;
+	winrt::com_ptr<IWICBitmapSource> toOutput = pIDecoderFrame;
+	winrt::check_hresult(pIDecoderFrame->GetColorContexts(0, nullptr, std::addressof(actualContexts)));
+	std::vector<winrt::com_ptr<IWICColorContext>> inputContexts;
 	if(actualContexts || isCMYK)
 	{
 		// if we don't have any contexts but we're CMYK we need to have a profile anyway
 		UINT contextsToCreate = !actualContexts && isCMYK ? 1 : actualContexts;
-		inputContexts = CreateColorContextArray(pFactory, contextsToCreate);
+		inputContexts = CreateColorContextArray(pFactory.get(), contextsToCreate);
 	}	
 
 	if (actualContexts > 0)
 	{		
 		std::vector<IWICColorContext*> addressVector = GetPointerVector(inputContexts);
-		_com_util::CheckError(
+		winrt::check_hresult(
 			pIDecoderFrame->GetColorContexts(
 				actualContexts,
 				addressVector.data(),
@@ -104,50 +99,50 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 	{
 		std::filesystem::path finalPath(info.ProfilePath());
 		finalPath /= L"RSWOP.icm";
-		_com_util::CheckError(inputContexts[0]->InitializeFromFilename(finalPath.wstring().c_str()));
+		winrt::check_hresult(inputContexts[0]->InitializeFromFilename(finalPath.wstring().c_str()));
 	}
 
-	wrl::ComPtr<IWICColorTransform>  colorTransform;
+	winrt::com_ptr<IWICColorTransform>  colorTransform;
 	if (finalCount)
 	{
-		_com_util::CheckError(pFactory->CreateColorTransformer(colorTransform.GetAddressOf()));
+		colorTransform = is::capture<IWICColorTransform>(pFactory, &IWICImagingFactory::CreateColorTransformer);
 	}
 
-	wrl::ComPtr<IWICColorContext> outputContext;
-	_com_util::CheckError(pFactory->CreateColorContext(outputContext.GetAddressOf()));
+	auto outputContext = is::capture<IWICColorContext>(pFactory, &IWICImagingFactory2::CreateColorContext);
 
 	{
 		std::filesystem::path finalPath(info.ProfilePath());
 		finalPath /= L"sRGB Color Space Profile.icm";
-		_com_util::CheckError(outputContext->InitializeFromFilename(finalPath.c_str()));
+		winrt::check_hresult(outputContext->InitializeFromFilename(finalPath.c_str()));
 	}
 
+	HRESULT hr = S_OK;
 	if (!inputContexts.empty())
 	{
-		for(UINT i = 0 ;i < actualContexts; ++i)
+		for(auto & context : inputContexts)
 		{
 			WICColorContextType type = WICColorContextUninitialized;
-			inputContexts[i]->GetType(std::addressof(type));
+			context->GetType(std::addressof(type));
 
-			hr = colorTransform->Initialize(toOutput.Get(), inputContexts[i].Get(), outputContext.Get(), GUID_WICPixelFormat32bppBGRA);
+			hr = colorTransform->Initialize(toOutput.get(), context.get(), outputContext.get(), GUID_WICPixelFormat32bppBGRA);
 			if(SUCCEEDED(hr))
 			{
 				break;
 			}
 		}
-		toOutput = colorTransform;
+		toOutput.copy_from(colorTransform.get());
 	}
 	//--------------------- SCALING -----------------------------------------------
 	double originalDpiX = 0.0, originalDpiY = 0.0;
-	_com_util::CheckError(
+	winrt::check_hresult(
 		toOutput->GetResolution(
 			std::addressof(originalDpiX),
 			std::addressof(originalDpiY)));
 
-	wrl::ComPtr<IWICBitmapScaler> pScaler;
+	winrt::com_ptr<IWICBitmapScaler> pScaler;
 	if (originalDpiX > info.Dpi() || originalDpiY > info.Dpi())
 	{
-		_com_util::CheckError(pFactory->CreateBitmapScaler(pScaler.GetAddressOf()));
+		pScaler = is::capture<IWICBitmapScaler>(pFactory, &IWICImagingFactory::CreateBitmapScaler);
 	}	
 
 	UINT newSizeX = sizeX, newSizeY = sizeY;
@@ -155,7 +150,7 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 	{
 		newSizeX = static_cast<UINT>(std::ceil((static_cast<double>(sizeX) * info.Dpi()) / originalDpiX));
 		newSizeY = static_cast<UINT>(std::ceil((static_cast<double>(sizeY) * info.Dpi()) / originalDpiY));
-		_com_util::CheckError(pScaler->Initialize(toOutput.Get(), newSizeX, newSizeY, WICBitmapInterpolationModeFant));
+		winrt::check_hresult(pScaler->Initialize(toOutput.get(), newSizeX, newSizeY, WICBitmapInterpolationModeFant));
 		
 		toOutput = pScaler;
 	}
@@ -167,9 +162,9 @@ static HRESULT DownSampleAndConvertImage(const TransformInfo&  info)
 			newSizeX,
 			newSizeY,
 			info.type(),
-			pFactory,
+			pFactory.get(),
 			info.Dpi());
-		output->write(toOutput.Get(), info.OutputPath());
+		output->write(toOutput.get(), info.OutputPath());
 	}
 
 	return hr;
@@ -310,7 +305,7 @@ int wmain(int argc, wchar_t* argv[])
 	 */
 	const auto profilePath = getColorProfileDirectory();
 	if (!profilePath) {
-		return -1;
+		return profilePath.error();
 	}
 
 	if(std::filesystem::is_directory(inputPath) && std::filesystem::is_directory(outputPath))
@@ -342,15 +337,15 @@ int wmain(int argc, wchar_t* argv[])
 			{
 				try{
 					DownSampleAndConvertImage(info);
-				}catch(const _com_error& ex){
+				}catch(const winrt::hresult_error& ex){
 
 					std::wcerr.setf(std::ios::showbase);
 					std::wcerr<< 
 						L"Unable to convert file: \n" <<
 						info.InputPath() <<
 						L"\nHRESULT: " <<
-						std::hex << ex.Error() <<
-						L"\nMessage:\n"<< ex.ErrorMessage() << std::endl;
+						std::hex << ex.code() <<
+						L"\nMessage:\n"<< ex.message().c_str() << std::endl;
 					std::wcerr.unsetf(std::ios::showbase);
 				}
 			}

@@ -6,39 +6,41 @@
 #endif
 
 #include "stdafx.h"
+#include <string_view>
 #include "TransformInfo.h"
 
 namespace ImageSquash::Output{
 
 class _declspec(novtable) outputImage
 {
+	outputImage(const outputImage&) = delete;
 public:
 	static std::unique_ptr<outputImage> CreateOutputImage(
 		const UINT sizeX,
 		const UINT sizeY,
 		const ImageType outputType,
-		const Microsoft::WRL::ComPtr<IWICImagingFactory>& factory,
+		IWICImagingFactory2* factory,
 		const double dpi);
 	outputImage(
 		const UINT sizeX,
 		const UINT sizeY,
-		const Microsoft::WRL::ComPtr<IWICImagingFactory>& factory,
+		IWICImagingFactory2* factory,
 		const double dpi);
 	virtual ~outputImage() noexcept;
 
 public:
-	virtual void write(const Microsoft::WRL::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) = 0;
+	virtual void write(IWICBitmapSource* source, const std::wstring_view outputPath) = 0;
 
 protected:
 	
-	Microsoft::WRL::ComPtr<IWICStream> createStreamForPath(const std::wstring& path);
-	IWICImagingFactory* Factory() const { return this->factory.Get(); }
-	UINT SizeX() const { return this->sizeX; }
-	UINT SizeY() const { return this->sizeY; }
-	double Dpi() const { return this->dpi; }
+	winrt::com_ptr<IWICStream> createStreamForPath(const std::wstring& path);
+	IWICImagingFactory2* Factory() const noexcept { return this->factory; }
+	UINT SizeX() const noexcept { return this->sizeX; }
+	UINT SizeY() const noexcept { return this->sizeY; }
+	double Dpi() const noexcept { return this->dpi; }
 private:
 	const outputImage& operator=(const outputImage &rhs) = delete;
-	const Microsoft::WRL::ComPtr<IWICImagingFactory> factory;
+	IWICImagingFactory2* factory;
 	const UINT sizeX;
 	const UINT sizeY;
 	const double dpi;

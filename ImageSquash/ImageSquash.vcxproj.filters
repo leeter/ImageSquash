@@ -50,6 +50,7 @@
       <Filter>Resource Files</Filter>
     </None>
     <None Include="boost.props" />
+    <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -71,6 +72,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="CoInitializeWrapper.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="com_helpers.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -216,6 +216,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <None Include="boost.props" />
+    <None Include="packages.config" />
     <None Include="ReadMe.txt" />
     <None Include="testImages\bw.png" />
     <None Include="testImages\BW32bit.png" />
@@ -232,6 +233,7 @@
   <ItemGroup>
     <ClInclude Include="banned.h" />
     <ClInclude Include="CoInitializeWrapper.h" />
+    <ClInclude Include="com_helpers.h" />
     <ClInclude Include="output.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="stdafx.h" />
@@ -257,5 +259,12 @@
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
+    <Import Project="..\packages\Microsoft.Windows.ImplementationLibrary.1.0.230411.1\build\native\Microsoft.Windows.ImplementationLibrary.targets" Condition="Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.230411.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" />
   </ImportGroup>
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('..\packages\Microsoft.Windows.ImplementationLibrary.1.0.230411.1\build\native\Microsoft.Windows.ImplementationLibrary.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Microsoft.Windows.ImplementationLibrary.1.0.230411.1\build\native\Microsoft.Windows.ImplementationLibrary.targets'))" />
+  </Target>
 </Project>

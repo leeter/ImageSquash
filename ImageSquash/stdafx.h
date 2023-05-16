@@ -72,11 +72,12 @@
 #include <string>
 #include <cstdint>
 #include <codecvt>
-#include <comdef.h>
 #include <cmath>
-#include <wrl.h>
 #include <ppl.h>
 #include <filesystem>
+#include <winrt/base.h>
+#include <wil/resource.h>
+#include "com_helpers.h"
 //#include <strsafe.h>
 #include "banned.h"
 

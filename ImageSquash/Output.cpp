@@ -4,61 +4,51 @@
 namespace wrl = ::Microsoft::WRL;
 using namespace ImageSquash::Output;
 
-outputImage::outputImage(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory>& factory, const double dpi)
+outputImage::outputImage(const UINT sizeX, const UINT sizeY, IWICImagingFactory2* factory, const double dpi)
 	:factory(factory), sizeX(sizeX), sizeY(sizeY), dpi(dpi)
 {
 }
 
-outputImage::~outputImage() throw()
+outputImage::~outputImage() noexcept
 {}
 
-wrl::ComPtr<IWICStream> outputImage::createStreamForPath(const std::wstring& path)
+winrt::com_ptr<IWICStream> outputImage::createStreamForPath(const std::wstring& path)
 {
-	wrl::ComPtr<IWICStream> stream;
-	
-	_com_util::CheckError( this->factory->CreateStream(&stream));
-	_com_util::CheckError(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE));
+	auto stream = is::capture<IWICStream>(this->factory, &IWICImagingFactory::CreateStream);
+	winrt::check_hresult(stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE));
 
 	return stream;
 }
 namespace {
 class outputJpeg: public outputImage
 {
+	outputJpeg(const outputJpeg&) = delete;
 public:
-#if __cplusplus > 199711L
 	using outputImage::outputImage;
-#else
-	outputJpeg(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory>& factory, const double dpi)
-		:outputImage(sizeX, sizeY, factory, dpi)
-	{
-	}
-#endif
-	//~outputJpeg()throw(){}
+	~outputJpeg() noexcept override = default;
 
-	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
+	void write(IWICBitmapSource* source, const std::wstring_view outputPath) override
 	{
 		std::filesystem::path outputPathBuffer(outputPath);
 		outputPathBuffer.replace_extension(L".jpg");
 		
-		wrl::ComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
+		const auto outputStream = this->createStreamForPath(outputPathBuffer.wstring());
 
-		wrl::ComPtr<IWICBitmapSource> forOutput = source;
+		winrt::com_ptr<IWICBitmapSource> forOutput;
+		forOutput.copy_from(source);
 
 		WICPixelFormatGUID inputFormat = { };
 		WICPixelFormatGUID outputFormat = GUID_WICPixelFormat24bppBGR;
 		WICPixelFormatGUID selectedOutputFormat = GUID_WICPixelFormat24bppBGR;
 
 		HRESULT hr = forOutput->GetPixelFormat(std::addressof(inputFormat));
-		wrl::ComPtr<IWICPalette> palette;
+		auto palette = is::capture<IWICPalette>(this->Factory(), &IWICImagingFactory::CreatePalette);
 		{
-			
-			_com_util::CheckError(this->Factory()->CreatePalette(&palette));
-
-			_com_util::CheckError(palette->InitializeFromBitmap(forOutput.Get(), 256U, FALSE));
+			winrt::check_hresult(palette->InitializeFromBitmap(forOutput.get(), 256U, FALSE));
 			UINT colorCount = 0;
-			_com_util::CheckError(palette->GetColorCount(std::addressof(colorCount)));
+			winrt::check_hresult(palette->GetColorCount(std::addressof(colorCount)));
 			BOOL isGreyScale = FALSE;
-			_com_util::CheckError(palette->IsGrayscale(std::addressof(isGreyScale)));
+			winrt::check_hresult(palette->IsGrayscale(std::addressof(isGreyScale)));
 
 			// Jpeg only supports 8bit greyscale and 24bit BGR we shouldn't
 			// waste our time trying to get anything else
@@ -70,28 +60,26 @@ public:
 		// if we need to convert the pixel format... we should do so
 		if (!IsEqualGUID(inputFormat, outputFormat))
 		{
-			wrl::ComPtr<IWICFormatConverter> converter;
-			_com_util::CheckError(this->Factory()->CreateFormatConverter(&converter));
+			auto converter = is::capture<IWICFormatConverter>(this->Factory(), &IWICImagingFactory2::CreateFormatConverter);
 		
-			_com_util::CheckError(
+			winrt::check_hresult(
 				converter->Initialize(
-					forOutput.Get(),
+					forOutput.get(),
 					outputFormat,
 					WICBitmapDitherTypeNone,
-					palette.Get(),
+					palette.get(),
 					0.0F,
 					WICBitmapPaletteTypeCustom
 					));
 			forOutput = converter;
 		}
 
-		wrl::ComPtr<IWICBitmapEncoder> encoder;
-		_com_util::CheckError(this->Factory()->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, &encoder));
+		auto encoder = is::capture<IWICBitmapEncoder>(this->Factory(), &IWICImagingFactory2::CreateEncoder, GUID_ContainerFormatJpeg, nullptr);
 
-		_com_util::CheckError(encoder->Initialize(outputStream.Get(), WICBitmapEncoderNoCache));
-		wrl::ComPtr<IWICBitmapFrameEncode> encoderFrame;
-		wrl::ComPtr<IPropertyBag2> propBag;
-		_com_util::CheckError(encoder->CreateNewFrame(&encoderFrame, &propBag));
+		winrt::check_hresult(encoder->Initialize(outputStream.get(), WICBitmapEncoderNoCache));
+		winrt::com_ptr<IWICBitmapFrameEncode> encoderFrame;
+		winrt::com_ptr<IPropertyBag2> propBag;
+		winrt::check_hresult(encoder->CreateNewFrame(encoderFrame.put(), propBag.put()));
 
 		// this doesn't actually do anything at the moment, but we should keep it around as a sample of
 		// how to do it in the future
@@ -99,20 +87,23 @@ public:
 		{        
 			PROPBAG2 option = { };
 			wchar_t imageQualOpt[] = L"ImageQuality";
-			option.pstrName = imageQualOpt;
-			_variant_t varValue(0.08f);     
-			_com_util::CheckError(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
-			_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));
+			option.pstrName = &imageQualOpt[0];
+			wil::unique_variant varValue;
+			varValue.fltVal = 0.08f;
+			varValue.vt = VT_R4;
+			
+			winrt::check_hresult(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
+			winrt::check_hresult(encoderFrame->Initialize(propBag.get()));
 		}
 
-		_com_util::CheckError(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
-		_com_util::CheckError(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
-		_com_util::CheckError(encoderFrame->SetPixelFormat(std::addressof(outputFormat)));
+		winrt::check_hresult(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
+		winrt::check_hresult(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
+		winrt::check_hresult(encoderFrame->SetPixelFormat(std::addressof(outputFormat)));
 		
 
 		if (!IsEqualGUID(outputFormat, selectedOutputFormat))
 		{
-			_com_issue_error(WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT);
+			winrt::throw_hresult(WINCODEC_ERR_UNSUPPORTEDPIXELFORMAT);
 		}
 		// disabled as this was adding 4k to the image
 		/*if (SUCCEEDED(hr))
@@ -120,53 +111,47 @@ public:
 		hr = pOutputFrame->SetColorContexts(1, outputContexts);
 		}*/
 
-		_com_util::CheckError(encoderFrame->WriteSource(forOutput.Get(), nullptr));
-		_com_util::CheckError(encoderFrame->Commit());
-		_com_util::CheckError(encoder->Commit());
+		winrt::check_hresult(encoderFrame->WriteSource(forOutput.get(), nullptr));
+		winrt::check_hresult(encoderFrame->Commit());
+		winrt::check_hresult(encoder->Commit());
 	}
 };
 
 class outputPng: public outputImage
 {
 public:
-#if __cplusplus > 199711L
 	using outputImage::outputImage;
-#else
-	outputPng(const UINT sizeX, const UINT sizeY, const wrl::ComPtr<IWICImagingFactory>& factory, const double dpi)
-		:outputImage(sizeX, sizeY, factory, dpi)
-	{
-	}
-#endif
-	//~outputPng() throw(){}
+	~outputPng() noexcept override = default;
 
-	void write(const wrl::ComPtr<IWICBitmapSource> source, const std::wstring & outputPath) override
+	void write(IWICBitmapSource* source, const std::wstring_view outputPath) override
 	{
 		std::filesystem::path outputPathBuffer(outputPath);
 		outputPathBuffer.replace_extension(L".png");
 
-		wrl::ComPtr<IWICStream> outputStream = this->createStreamForPath(outputPathBuffer.wstring());
+		auto outputStream = this->createStreamForPath(outputPathBuffer.wstring());
 
 
-		wrl::ComPtr<IWICBitmapSource> forOutput = source;
+		winrt::com_ptr<IWICBitmapSource> forOutput;
+		forOutput.copy_from(source);
 		
 		WICPixelFormatGUID outputFormat = GUID_WICPixelFormat32bppBGRA;
 		WICPixelFormatGUID selectedOutputFormat = GUID_WICPixelFormat32bppBGRA;
 		WICPixelFormatGUID inputFormat = {};
-		_com_util::CheckError(forOutput->GetPixelFormat(std::addressof(inputFormat)));
-		wrl::ComPtr<IWICPalette> palette;
+		winrt::check_hresult(forOutput->GetPixelFormat(std::addressof(inputFormat)));
+		winrt::com_ptr<IWICPalette> palette;
 		if (inputFormat != GUID_WICPixelFormatBlackWhite)
 		{
-			_com_util::CheckError(this->Factory()->CreatePalette(&palette));
+			is::capture<IWICPalette>(this->Factory(), &IWICImagingFactory2::CreatePalette);
 
-			const auto hasAlpha = this->HasAlpha(forOutput.Get());
+			const auto hasAlpha = this->HasAlpha(forOutput.get());
 
-			_com_util::CheckError(palette->InitializeFromBitmap(forOutput.Get(), 256U, hasAlpha));		
+			winrt::check_hresult(palette->InitializeFromBitmap(forOutput.get(), 256U, hasAlpha));		
 			UINT colorCount = 0;
-			_com_util::CheckError(palette->GetColorCount(std::addressof(colorCount)));
+			winrt::check_hresult(palette->GetColorCount(std::addressof(colorCount)));
 			BOOL isBlackAndWhite = false;
-			_com_util::CheckError(palette->IsBlackWhite(std::addressof(isBlackAndWhite)));
+			winrt::check_hresult(palette->IsBlackWhite(std::addressof(isBlackAndWhite)));
 
-			//_com_util::CheckError(palette->IsGrayscale(std::addressof(isGreyScale)));
+			//winrt::check_hresult(palette->IsGrayscale(std::addressof(isGreyScale)));
 			bool hasPalette = false;
 			std::tie(selectedOutputFormat, hasPalette)
 				= this->GetOutputPixelFormat(
@@ -178,7 +163,7 @@ public:
 
 			if (!hasPalette)
 			{
-				palette.Reset();
+				palette = nullptr;
 			}
 		}
 		else
@@ -189,44 +174,42 @@ public:
 		// if we need to convert the pixel format... we should do so
 		if (inputFormat != outputFormat)
 		{
-			wrl::ComPtr<IWICFormatConverter> converter;
-			_com_util::CheckError(this->Factory()->CreateFormatConverter(&converter));
-			_com_util::CheckError(converter->Initialize(
-				forOutput.Get(),
+			auto converter = is::capture<IWICFormatConverter>(this->Factory(), &IWICImagingFactory::CreateFormatConverter);
+			winrt::check_hresult(converter->Initialize(
+				forOutput.get(),
 				outputFormat,
 				WICBitmapDitherTypeNone,
-				palette.Get(),
+				palette.get(),
 				0.0F,
 				WICBitmapPaletteTypeCustom
 			));
-			forOutput = converter;
+			forOutput = std::move(converter);
 		}
-		wrl::ComPtr<IWICBitmapEncoder> encoder;
-		_com_util::CheckError(this->Factory()->CreateEncoder(GUID_ContainerFormatPng, nullptr, &encoder));
+		auto encoder = is::capture<IWICBitmapEncoder>(this->Factory(), &IWICImagingFactory::CreateEncoder, GUID_ContainerFormatPng, nullptr);
 
-		_com_util::CheckError(encoder->Initialize(outputStream.Get(), WICBitmapEncoderNoCache));
-		wrl::ComPtr<IWICBitmapFrameEncode> encoderFrame;
-		wrl::ComPtr<IPropertyBag2> propBag;
-		_com_util::CheckError(encoder->CreateNewFrame(&encoderFrame, &propBag));
+		winrt::check_hresult(encoder->Initialize(outputStream.get(), WICBitmapEncoderNoCache));
+		winrt::com_ptr<IWICBitmapFrameEncode> encoderFrame;
+		winrt::com_ptr<IPropertyBag2> propBag;
+		winrt::check_hresult(encoder->CreateNewFrame(encoderFrame.put(), propBag.put()));
 
 		// this doesn't actually do anything at the moment, but we should keep it around as a sample of
 		// how to do it in the future
 		PROPBAG2 option = { };
 		wchar_t interlaceOpt[] = L"InterlaceOption";
-		option.pstrName = interlaceOpt;
-		_variant_t varValue(false);     
-		_com_util::CheckError(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
-		_com_util::CheckError(encoderFrame->Initialize(propBag.Get()));
+		option.pstrName = &interlaceOpt[0];
+		VARIANT varValue(false);     
+		winrt::check_hresult(propBag->Write(1, std::addressof(option), std::addressof(varValue)));
+		winrt::check_hresult(encoderFrame->Initialize(propBag.get()));
 
-		_com_util::CheckError(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
+		winrt::check_hresult(encoderFrame->SetResolution(this->Dpi(), this->Dpi()));
 
-		_com_util::CheckError(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
+		winrt::check_hresult(encoderFrame->SetSize(this->SizeX(), this->SizeY()));
 
-		_com_util::CheckError(encoderFrame->SetPixelFormat(std::addressof(outputFormat)));
+		winrt::check_hresult(encoderFrame->SetPixelFormat(std::addressof(outputFormat)));
 
 		if (outputFormat != selectedOutputFormat)
 		{
-			throw _com_error(E_FAIL);
+			winrt::throw_hresult(E_FAIL);
 		}
 		// disabled as this was adding 4k to the image
 		/*if (SUCCEEDED(hr))
@@ -234,41 +217,34 @@ public:
 		hr = pOutputFrame->SetColorContexts(1, outputContexts);
 		}*/
 
-		_com_util::CheckError(encoderFrame->WriteSource(forOutput.Get(), nullptr));
+		winrt::check_hresult(encoderFrame->WriteSource(forOutput.get(), nullptr));
 		
-		_com_util::CheckError(encoderFrame->Commit());
+		winrt::check_hresult(encoderFrame->Commit());
 
-		_com_util::CheckError(encoder->Commit());
+		winrt::check_hresult(encoder->Commit());
 	}
 
-	bool HasAlpha(const wrl::ComPtr<IWICBitmapSource> & source)
+	bool HasAlpha(IWICBitmapSource * source)
 	{
 		// stuff that has to be cleaned up
-		
-
-		// stuff that doesn't
-		WICInProcPointer buffer;
-		
-		WICPixelFormatGUID inputFormat = { };	
-		
-
-		_com_util::CheckError(source->GetPixelFormat(std::addressof(inputFormat)));
+		WICPixelFormatGUID inputFormat = { };
+		winrt::check_hresult(source->GetPixelFormat(std::addressof(inputFormat)));
 		bool hasAlpha = false;
-		if(!this->IsPixelFormatRGBWithAlpha(inputFormat))
+		if (!this->IsPixelFormatRGBWithAlpha(inputFormat)) {
 			return false;
+		}
 
-		wrl::ComPtr<IWICBitmapSource> finalSource;
+		winrt::com_ptr<IWICBitmapSource> finalSource;
 		if (inputFormat == GUID_WICPixelFormat32bppBGRA)
 		{
-			finalSource = source;
+			finalSource.copy_from(source);
 		}
 		else
 		{
-			wrl::ComPtr<IWICFormatConverter> converter;
-			_com_util::CheckError(this->Factory()->CreateFormatConverter(&converter));
-			_com_util::CheckError(
+			auto converter = is::capture<IWICFormatConverter>(this->Factory(), &IWICImagingFactory2::CreateFormatConverter);
+			winrt::check_hresult(
 				converter->Initialize(
-					source.Get(),
+					source,
 					GUID_WICPixelFormat32bppBGRA,
 					WICBitmapDitherTypeNone,
 					nullptr,
@@ -276,27 +252,24 @@ public:
 					WICBitmapPaletteTypeCustom
 					));
 
-			finalSource = converter;			
+			finalSource = std::move(converter);
 		}
-		wrl::ComPtr<IWICBitmap> bitmap;
 		
-		_com_util::CheckError(
-			this->Factory()->CreateBitmapFromSource(
-			finalSource.Get(),
-			WICBitmapCacheOnDemand, &bitmap));
+		auto bitmap = is::capture<IWICBitmap>(
+			this->Factory(),
+			&IWICImagingFactory2::CreateBitmapFromSource,
+			finalSource.get(),
+			WICBitmapCacheOnDemand);
 		UINT sizeX = 0u, sizeY = 0u;
-		_com_util::CheckError(bitmap->GetSize(std::addressof(sizeX), std::addressof(sizeY)));
+		winrt::check_hresult(bitmap->GetSize(std::addressof(sizeX), std::addressof(sizeY)));
 
-		wrl::ComPtr<IWICBitmapLock> lock;
-		//if (SUCCEEDED(hr))
-		{
-			const WICRect lockRectangle = { 0, 0, static_cast<INT>(sizeX), static_cast<INT>(sizeY)};
-			_com_util::CheckError(
-				bitmap->Lock(std::addressof(lockRectangle), WICBitmapLockRead, &lock));
-		}
+		const WICRect lockRectangle = { 0, 0, static_cast<INT>(sizeX), static_cast<INT>(sizeY)};
+		auto lock = is::capture<IWICBitmapLock>(
+				bitmap, &IWICBitmap::Lock, std::addressof(lockRectangle), WICBitmapLockRead);
 		
 		UINT bufferSize = 0u;
-		_com_util::CheckError(
+		WICInProcPointer buffer;
+		winrt::check_hresult(
 			lock->GetDataPointer(std::addressof(bufferSize), std::addressof(buffer)));
 
 		const std::uint32_t * imageBuffer = reinterpret_cast<const std::uint32_t *>(buffer);
@@ -375,7 +348,7 @@ std::unique_ptr<outputImage> outputImage::CreateOutputImage(
 		const UINT sizeX,
 		const UINT sizeY,
 		const ImageType outputType,
-		const wrl::ComPtr<IWICImagingFactory>& factory,
+		IWICImagingFactory2* factory,
 		const double dpi)
 {
 	if(outputType == ImageType::PNG)
